@@ -19,8 +19,6 @@ import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
-import org.bukkit.block.data.BlockData;
-import org.bukkit.block.data.type.Leaves;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -213,19 +211,6 @@ public final class ChunkReplacementManager {
                         continue;
                     }
 
-                    if (isNaturalTreeLeaf(block)) {
-                        continue;
-                    }
-
-                    if (Tag.LEAVES.isTagged(current)) {
-                        block.setType(Material.AIR, false);
-                        continue;
-                    }
-
-                    if (shouldPreserveTreeWood(block)) {
-                        continue;
-                    }
-
                     if (shouldClearDecorativeFoliage(current)) {
                         block.setType(Material.AIR, false);
                         continue;
@@ -302,38 +287,6 @@ public final class ChunkReplacementManager {
 
     private boolean isFluidLike(Material material) {
         return material == Material.WATER || material == Material.LAVA || material == Material.FIRE;
-    }
-
-    private boolean isNaturalTreeLeaf(org.bukkit.block.Block block) {
-        if (!Tag.LEAVES.isTagged(block.getType())) {
-            return false;
-        }
-
-        BlockData data = block.getBlockData();
-        if (data instanceof Leaves leaves) {
-            return !leaves.isPersistent() && leaves.getDistance() < 7;
-        }
-
-        return false;
-    }
-
-    private boolean shouldPreserveTreeWood(org.bukkit.block.Block block) {
-        String name = block.getType().name();
-        if (!(name.endsWith("_LOG") || name.endsWith("_WOOD") || "MANGROVE_ROOTS".equals(name) || "MUDDY_MANGROVE_ROOTS".equals(name))) {
-            return false;
-        }
-
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                for (int dy = -2; dy <= 8; dy++) {
-                    if (isNaturalTreeLeaf(block.getRelative(dx, dy, dz))) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
     }
 
     private boolean shouldClearDecorativeFoliage(Material material) {
