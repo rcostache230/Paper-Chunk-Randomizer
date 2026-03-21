@@ -15,6 +15,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
+import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -210,6 +211,11 @@ public final class ChunkReplacementManager {
                         continue;
                     }
 
+                    if (shouldClearDecorativeFoliage(current)) {
+                        block.setType(Material.AIR, false);
+                        continue;
+                    }
+
                     boolean isFluid = isFluidLike(current);
                     if (isProtectedBlock(current) && !(isFluid && state.shouldReplaceFluids())) {
                         continue;
@@ -281,6 +287,25 @@ public final class ChunkReplacementManager {
 
     private boolean isFluidLike(Material material) {
         return material == Material.WATER || material == Material.LAVA || material == Material.FIRE;
+    }
+
+    private boolean shouldClearDecorativeFoliage(Material material) {
+        if (Tag.LEAVES.isTagged(material) || Tag.FLOWERS.isTagged(material) || Tag.SAPLINGS.isTagged(material)) {
+            return true;
+        }
+
+        String name = material.name();
+        return material == Material.SHORT_GRASS
+                || material == Material.TALL_GRASS
+                || material == Material.FERN
+                || material == Material.LARGE_FERN
+                || material == Material.DEAD_BUSH
+                || "LEAF_LITTER".equals(name)
+                || "PINK_PETALS".equals(name)
+                || name.endsWith("_BUSH")
+                || name.endsWith("_ROOTS")
+                || name.endsWith("_VINE")
+                || name.contains("VINES");
     }
 
     private boolean isRemovableItem(Material material) {
