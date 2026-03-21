@@ -30,9 +30,7 @@ public final class EffectManager {
             return;
         }
 
-        long seed = chunk.getWorld().getSeed()
-                ^ ((long) chunk.getX() * 49_632L)
-                ^ ((long) chunk.getZ() * 32_517L);
+        long seed = (long) chunk.getX() * 49_632L + (long) chunk.getZ() * 32_517L;
         Random random = new Random(seed);
         PotionEffectType effect = validEffects.get(random.nextInt(validEffects.size()));
 

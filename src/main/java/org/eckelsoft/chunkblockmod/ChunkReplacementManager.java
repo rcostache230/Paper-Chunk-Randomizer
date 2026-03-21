@@ -229,9 +229,7 @@ public final class ChunkReplacementManager {
             return null;
         }
 
-        long seed = chunk.getWorld().getSeed()
-                ^ ((long) chunk.getX() * 3_121L)
-                ^ ((long) chunk.getZ() * 13_289L);
+        long seed = (long) chunk.getX() * 3_121L + (long) chunk.getZ() * 13_289L;
         Random random = new Random(seed);
         return allowedBlocks.get(random.nextInt(allowedBlocks.size()));
     }
