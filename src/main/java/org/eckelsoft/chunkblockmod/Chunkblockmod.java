@@ -51,6 +51,7 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
 
         getServer().getPluginManager().registerEvents(this, this);
         startTimerTask();
+        startChunkProcessingTask();
         startCleanupTask();
     }
 
@@ -91,6 +92,10 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
             player.sendActionBar(Component.empty());
         }
         actionBarVisible = false;
+    }
+
+    private void startChunkProcessingTask() {
+        getServer().getScheduler().runTaskTimer(this, chunkReplacementManager::processQueuedChunks, 1L, 1L);
     }
 
     private void startCleanupTask() {

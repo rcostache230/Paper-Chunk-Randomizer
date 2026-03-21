@@ -1,6 +1,8 @@
 package org.eckelsoft.chunkblockmod;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -10,6 +12,7 @@ import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
@@ -27,6 +30,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class ChunkReplacementManager {
+    private static final int BLOCK_VISITS_PER_TICK = 8_192;
     private static final Set<String> EXCLUDED_SUFFIXES = Set.of(
             "_STAIRS", "_SLAB", "_WALL", "_FENCE", "_FENCE_GATE", "_DOOR", "_TRAPDOOR",
             "_BED", "_BUTTON", "_PRESSURE_PLATE", "_BANNER", "_SIGN", "_HANGING_SIGN",
@@ -87,6 +91,7 @@ public final class ChunkReplacementManager {
     private final MobSpawnManager mobSpawnManager;
     private final NamespacedKey chunkWalkerKey;
     private final Set<ChunkKey> visitedChunks = new HashSet<>();
+    private final Deque<QueuedChunkWork> pendingChunkWork = new ArrayDeque<>();
     private final List<Material> validReplacementBlocks = new ArrayList<>();
 
     public ChunkReplacementManager(JavaPlugin plugin, ModState state, EffectManager effectManager, MobSpawnManager mobSpawnManager) {
@@ -119,7 +124,7 @@ public final class ChunkReplacementManager {
             mobSpawnManager.triggerSurpriseSpawn(chunk.getWorld(), player, state.getMaxMobs(), state.getDebugLevel());
         }
 
-        processChunk(chunk, player);
+        queueChunkProcessing(chunk, player, key);
     }
 
     public void giveChunkWalkerBoots(Player player) {
@@ -187,7 +192,32 @@ public final class ChunkReplacementManager {
         return true;
     }
 
-    private void processChunk(Chunk chunk, Player player) {
+    public void processQueuedChunks() {
+        if (pendingChunkWork.isEmpty()) {
+            return;
+        }
+
+        int remainingBudget = BLOCK_VISITS_PER_TICK;
+        int attempts = pendingChunkWork.size();
+        while (remainingBudget > 0 && attempts-- > 0 && !pendingChunkWork.isEmpty()) {
+            QueuedChunkWork work = pendingChunkWork.removeFirst();
+            World world = Bukkit.getWorld(work.key.worldId());
+            if (world == null || !world.isChunkLoaded(work.key.x(), work.key.z())) {
+                pendingChunkWork.addLast(work);
+                continue;
+            }
+
+            Chunk chunk = world.getChunkAt(work.key.x(), work.key.z());
+            int processed = processChunkSlice(chunk, work, remainingBudget);
+            remainingBudget -= processed;
+
+            if (!work.isComplete()) {
+                pendingChunkWork.addLast(work);
+            }
+        }
+    }
+
+    private void queueChunkProcessing(Chunk chunk, Player player, ChunkKey key) {
         if (state.areEffectsEnabled()) {
             effectManager.applyChunkEffect(player, chunk, state.getDebugLevel());
         }
@@ -201,48 +231,51 @@ public final class ChunkReplacementManager {
             player.sendMessage(Component.text("[LOG] Chunk Block: " + prettify(targetBlock), NamedTextColor.GRAY));
         }
 
+        pendingChunkWork.addLast(new QueuedChunkWork(key, targetBlock, chunk.getWorld().getMinHeight()));
+    }
+
+    private int processChunkSlice(Chunk chunk, QueuedChunkWork work, int budget) {
         World world = chunk.getWorld();
-        for (int localX = 0; localX < 16; localX++) {
-            for (int localZ = 0; localZ < 16; localZ++) {
-                for (int y = world.getMinHeight(); y < world.getMaxHeight(); y++) {
-                    org.bukkit.block.Block block = chunk.getBlock(localX, y, localZ);
-                    Material current = block.getType();
-                    if (current.isAir()) {
-                        continue;
-                    }
+        int maxHeight = world.getMaxHeight();
+        int processed = 0;
 
-                    if (shouldClearDecorativeFoliage(current)) {
-                        block.setType(Material.AIR, false);
-                        continue;
-                    }
-
+        while (processed < budget && !work.isComplete()) {
+            org.bukkit.block.Block block = chunk.getBlock(work.localX, work.y, work.localZ);
+            Material current = block.getType();
+            if (!current.isAir()) {
+                if (shouldClearDecorativeFoliage(current)) {
+                    block.setType(Material.AIR, false);
+                } else {
                     boolean isFluid = isFluidLike(current);
-                    if (isProtectedBlock(current) && !(isFluid && state.shouldReplaceFluids())) {
-                        continue;
+                    if ((!isProtectedBlock(current) || (isFluid && state.shouldReplaceFluids()))
+                            && current != work.targetBlock) {
+                        block.setType(work.targetBlock, false);
                     }
-
-                    if (current == targetBlock) {
-                        continue;
-                    }
-
-                    block.setType(targetBlock, false);
                 }
             }
+
+            processed++;
+            work.advance(maxHeight, world.getMinHeight());
         }
+
+        return processed;
     }
 
     private Material pickReplacementBlock(Chunk chunk) {
-        List<Material> allowedBlocks = validReplacementBlocks.stream()
-                .filter(material -> !state.getCustomBlacklist().contains(material))
-                .toList();
-
-        if (allowedBlocks.isEmpty()) {
+        if (validReplacementBlocks.isEmpty()) {
             return null;
         }
 
         long seed = (long) chunk.getX() * 3_121L + (long) chunk.getZ() * 13_289L;
         Random random = new Random(seed);
-        return allowedBlocks.get(random.nextInt(allowedBlocks.size()));
+        Material targetBlock = validReplacementBlocks.get(random.nextInt(validReplacementBlocks.size()));
+        int attempts = 0;
+        while (state.getCustomBlacklist().contains(targetBlock) && attempts < validReplacementBlocks.size()) {
+            random = new Random(seed + (++attempts));
+            targetBlock = validReplacementBlocks.get(random.nextInt(validReplacementBlocks.size()));
+        }
+
+        return state.getCustomBlacklist().contains(targetBlock) ? null : targetBlock;
     }
 
     private boolean hasChunkWalker(ItemStack boots) {
@@ -318,5 +351,39 @@ public final class ChunkReplacementManager {
     }
 
     private record ChunkKey(UUID worldId, int x, int z) {
+    }
+
+    private static final class QueuedChunkWork {
+        private final ChunkKey key;
+        private final Material targetBlock;
+        private int localX;
+        private int localZ;
+        private int y;
+
+        private QueuedChunkWork(ChunkKey key, Material targetBlock, int minHeight) {
+            this.key = key;
+            this.targetBlock = targetBlock;
+            this.y = minHeight;
+        }
+
+        private void advance(int maxHeight, int minHeight) {
+            y++;
+            if (y < maxHeight) {
+                return;
+            }
+
+            y = minHeight;
+            localZ++;
+            if (localZ < 16) {
+                return;
+            }
+
+            localZ = 0;
+            localX++;
+        }
+
+        private boolean isComplete() {
+            return localX >= 16;
+        }
     }
 }
