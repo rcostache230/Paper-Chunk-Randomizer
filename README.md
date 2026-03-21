@@ -4,6 +4,8 @@ Paper-Chunk-Randomizer is a beta Paper plugin build of the Random Chunks challen
 
 Every new chunk a player enters is transformed into one deterministic replacement block for that chunk. The result is a chaotic survival run where terrain, caves, oceans, and structures can all turn into something completely different while you try to reach the End and finish the game.
 
+<img width="768" height="512" alt="image" src="https://github.com/user-attachments/assets/177cf0a3-ef05-429b-9402-5b733e652fcd" />
+
 ## Status
 
 - Current release line: `beta`
