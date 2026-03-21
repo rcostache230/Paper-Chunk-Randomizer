@@ -109,7 +109,12 @@ public final class ChunkReplacementManager {
         }
 
         ChunkKey key = new ChunkKey(chunk.getWorld().getUID(), chunk.getX(), chunk.getZ());
-        if (visitedChunks.add(key) && visitedChunks.size() % state.getSpawnInterval() == 0) {
+        boolean firstVisit = visitedChunks.add(key);
+        if (!firstVisit) {
+            return;
+        }
+
+        if (visitedChunks.size() % state.getSpawnInterval() == 0) {
             mobSpawnManager.triggerSurpriseSpawn(chunk.getWorld(), player, state.getMaxMobs(), state.getDebugLevel());
         }
 

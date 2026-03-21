@@ -207,14 +207,19 @@ Sets the maximum number of surprise mobs that may spawn in one event.
 
 Allowed range:
 
-- `1` to `64`
+- `0` to `64`
 
 Examples:
 
 ```text
+/rc spawnmonster max 0
 /rc spawnmonster max 4
 /rc spawnmonster max 12
 ```
+
+Notes:
+
+- `0` fully disables surprise mob spawns
 
 ### `/rc debug <0-3>`
 

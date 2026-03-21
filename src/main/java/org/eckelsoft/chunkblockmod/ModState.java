@@ -89,7 +89,7 @@ public final class ModState {
     }
 
     public void setMaxMobs(int maxMobs) {
-        this.maxMobs = maxMobs;
+        this.maxMobs = clamp(maxMobs, 0, 64);
         save();
     }
 
@@ -163,7 +163,7 @@ public final class ModState {
         timerVisible = config.getBoolean("timer-visible", true);
         effectsEnabled = config.getBoolean("effects-enabled", true);
         spawnInterval = Math.max(1, config.getInt("spawn-interval", 16));
-        maxMobs = clamp(config.getInt("max-mobs", 8), 1, 64);
+        maxMobs = clamp(config.getInt("max-mobs", 8), 0, 64);
         replaceFluids = config.getBoolean("replace-fluids", false);
         timerPrefix = config.getString("timer-prefix", "");
         timerSuffix = config.getString("timer-suffix", "");

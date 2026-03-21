@@ -1,9 +1,17 @@
+import java.text.SimpleDateFormat
+import java.util.TimeZone
+
 plugins {
     id 'java'
 }
 
+def basePluginVersion = (findProperty('plugin_version') ?: '0.1.0-beta.1').toString()
+def buildTimestampFormat = new SimpleDateFormat("yyyyMMddHHmmss")
+buildTimestampFormat.setTimeZone(TimeZone.getTimeZone("UTC"))
+def buildTimestamp = buildTimestampFormat.format(new Date())
+
 group = findProperty('plugin_group') ?: 'org.eckelsoft'
-version = findProperty('plugin_version') ?: '0.1.0-beta.1'
+version = "${basePluginVersion}-build.${buildTimestamp}"
 
 repositories {
     mavenCentral()

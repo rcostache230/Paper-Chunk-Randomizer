@@ -27,16 +27,16 @@ Every new chunk a player enters is transformed into one deterministic replacemen
 
 ## Download
 
-The compiled beta plugin jar is:
+The compiled beta plugin jar is written with a unique build suffix each time you build, for example:
 
-`build/libs/Paper-Chunk-Randomizer-0.1.0-beta.1.jar`
+`build/libs/Paper-Chunk-Randomizer-0.1.0-beta.1-build.20260321124500.jar`
 
 Drop that jar into your server's `plugins/` folder and restart the server.
 
 ## Installation
 
 1. Stop your Paper server.
-2. Copy `Paper-Chunk-Randomizer-0.1.0-beta.1.jar` into `plugins/`.
+2. Copy the newest `Paper-Chunk-Randomizer-0.1.0-beta.1-build.<timestamp>.jar` into `plugins/`.
 3. Start the server.
 4. Configure the plugin in `plugins/Paper-Chunk-Randomizer/config.yml` if needed.
 5. Use `/rc start` in-game to begin the challenge.
@@ -69,7 +69,7 @@ If you are targeting a different Paper `1.21.x` version, update these values in 
 | `/rc exclude add <block>` | Adds a block to the replacement blacklist |
 | `/rc exclude clear` | Clears the custom blacklist |
 | `/rc spawnmonster chunks <value>` | Sets how many unique visited chunks trigger mob spawns |
-| `/rc spawnmonster max <value>` | Sets the max number of surprise mobs |
+| `/rc spawnmonster max <value>` | Sets the max number of surprise mobs, including `0` to disable them |
 | `/rc debug <0-3>` | Sets debug output level |
 
 Detailed command documentation lives in [docs/COMMANDS-WIKI.md](/Users/razvancostache/Documents/chuckys/docs/COMMANDS-WIKI.md).
@@ -102,7 +102,7 @@ custom-blacklist: []
 | `timer-visible` | Whether the action-bar timer is shown |
 | `effects-enabled` | Whether chunk potion effects are active |
 | `spawn-interval` | Unique chunk visits required to trigger surprise spawns |
-| `max-mobs` | Maximum amount of surprise mobs spawned at once |
+| `max-mobs` | Maximum amount of surprise mobs spawned at once, with `0` disabling surprise mobs |
 | `replace-fluids` | Whether protected fluids and fire may be replaced |
 | `timer-prefix` | Text shown before the timer |
 | `timer-suffix` | Text shown after the timer |

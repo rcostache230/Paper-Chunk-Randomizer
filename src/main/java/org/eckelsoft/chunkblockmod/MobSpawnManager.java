@@ -31,7 +31,7 @@ public final class MobSpawnManager {
     }
 
     public void triggerSurpriseSpawn(World world, Player player, int maxMobs, int debugLevel) {
-        if (dynamicMobPool.isEmpty()) {
+        if (dynamicMobPool.isEmpty() || maxMobs <= 0) {
             return;
         }
 

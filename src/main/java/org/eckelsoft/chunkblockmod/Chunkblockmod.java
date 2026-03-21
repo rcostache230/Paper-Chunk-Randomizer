@@ -258,12 +258,15 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
                 return true;
             }
             case "max" -> {
-                if (value < 1 || value > 64) {
-                    sender.sendMessage(Component.text("Max mobs must be between 1 and 64.", NamedTextColor.RED));
+                if (value < 0 || value > 64) {
+                    sender.sendMessage(Component.text("Max mobs must be between 0 and 64.", NamedTextColor.RED));
                     return true;
                 }
                 state.setMaxMobs(value);
-                sender.sendMessage(Component.text("Maximum surprise mobs set to " + value + ".", NamedTextColor.GOLD));
+                String message = value == 0
+                        ? "Surprise mob spawns disabled."
+                        : "Maximum surprise mobs set to " + value + ".";
+                sender.sendMessage(Component.text(message, NamedTextColor.GOLD));
                 return true;
             }
             default -> {
