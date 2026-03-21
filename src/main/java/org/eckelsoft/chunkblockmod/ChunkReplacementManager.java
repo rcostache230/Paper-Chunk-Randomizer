@@ -45,7 +45,10 @@ public final class ChunkReplacementManager {
             "BELL", "BEACON", "TNT", "BUBBLE", "POWDER_SNOW", "AMETHYST_BUD",
             "AMETHYST_CLUSTER", "BUDDING_AMETHYST", "FROGSPAWN", "EGG", "PICKLE",
             "WEEPING_VINES", "TWISTING_VINES", "CAVE_VINES", "PITCHER", "CHORUS",
-            "MOSS_CARPET", "SHELF", "RESIN", "CONCRETE_POWDER"
+            "MOSS_CARPET", "SHELF", "RESIN", "CONCRETE_POWDER", "SCULK",
+            "OBSERVER", "HOPPER", "DISPENSER", "DROPPER", "FURNACE", "BREWING",
+            "LECTERN", "JUKEBOX", "CRAFTER", "BARREL", "TRIAL", "VAULT",
+            "CONDUIT", "RESPAWN_ANCHOR", "BEE"
     );
     private static final Set<String> REMOVABLE_ITEM_NAMES = Set.of(
             "STRING", "LEAF_LITTER", "SKELETON_SKULL", "WITHER_SKELETON_SKULL",
