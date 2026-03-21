@@ -19,6 +19,8 @@ import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.type.Leaves;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -211,6 +213,11 @@ public final class ChunkReplacementManager {
                         continue;
                     }
 
+                    if (Tag.LEAVES.isTagged(current)) {
+                        preserveLeafBlock(block);
+                        continue;
+                    }
+
                     if (shouldClearDecorativeFoliage(current)) {
                         block.setType(Material.AIR, false);
                         continue;
@@ -287,6 +294,14 @@ public final class ChunkReplacementManager {
 
     private boolean isFluidLike(Material material) {
         return material == Material.WATER || material == Material.LAVA || material == Material.FIRE;
+    }
+
+    private void preserveLeafBlock(org.bukkit.block.Block block) {
+        BlockData data = block.getBlockData();
+        if (data instanceof Leaves leaves && !leaves.isPersistent()) {
+            leaves.setPersistent(true);
+            block.setBlockData(leaves, false);
+        }
     }
 
     private boolean shouldClearDecorativeFoliage(Material material) {
