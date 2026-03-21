@@ -1,38 +1,133 @@
-# Random Chunks (Chaos Update)
+# Paper-Chunk-Randomizer (Beta)
 
-**Every chunk you visit is randomized to a new blocktype!**
+Paper-Chunk-Randomizer is a beta Paper plugin build of the Random Chunks challenge originally created by Eckelsoft.
 
-**Explore the world..**
+Every new chunk a player enters is transformed into one deterministic replacement block for that chunk. The result is a chaotic survival run where terrain, caves, oceans, and structures can all turn into something completely different while you try to reach the End and finish the game.
 
-**.. defeat the ender dragon.**
+## Status
 
-<img src="https://cdn.modrinth.com/data/T6LCJpvP/images/05d5a9659534e2ee8218cde9ad52c6d43f8f7f30.png" alt="randomized chunks" width="700">
+- Current release line: `beta`
+- Target platform: Paper `1.21.x`
+- Required Java version: `21`
 
+## Credits
 
-<img src="https://cdn.modrinth.com/data/T6LCJpvP/images/206dfd7c447465d998566130d5f48fdd712260a3.png" alt="randomized chunks fluids" width="700">
+- Original creator of Chunk Randomizer / Random Chunks: `Eckelsoft`
+- Original project source: [eckelsoft/Chunk-Randomizer](https://github.com/eckelsoft/Chunk-Randomizer)
+- This repository contains a beta Paper adaptation of that original project
 
-## 🛠 Basic Commands
+## What It Does
 
-| Command                   | Description                                                              |
-|:--------------------------|:-------------------------------------------------------------------------|
-| `/rc start`               | Activate the challenge and start the timer.                              |
-| `/rc stop`                | Pause challenge and timer.                                               |
-| `/rc reset`               | Reset challenge and timer to 00:00:00.                                   |
-| `/rc timer`               | **Toggle the UI**                                                        |
-| `/rc effects`             | **Toggle potion effects**                                                |
-| `/rc fluids <true/false>` | **Toggle:** Should Water, Lava and Fire be randomized? (Default: false)  |
-| `/rc exclude add <block>` | Add a block to the custom blacklist                                      |
-| `/rc exclude clear`       | Reset your custom blacklist                                              |
-| `/rc spawnmonster max`    | Set maximal amount of surprise mobs                                      |
-| `/rc spawnmonster chunk`  | Set amount of visit chunks to trigger surprise spawns                    |
-| `/rc debug <0-3>`         | **Toggle**: See exactly which block or entity is about to ruin your day. |
+- Replaces blocks in newly entered chunks with a chunk-specific random material
+- Applies chunk-based potion effects when players enter a new chunk
+- Spawns surprise mobs after a configurable number of unique chunk visits
+- Shows a challenge timer in the action bar
+- Supports a custom replacement blacklist
+- Gives players Chunk Walker boots when the run starts
 
-## 💡 Pro Tips & Customization
+## Download
 
-- **Use /rc exclude add minecraft:...** to prevent a chunk from turning into a lag-fest.
-- **Chunk Walker Boots**: They protect you from all world-randomization and effects, but they lose 10 durability per chunk.
-- Toggle all status effects/curses (ON|OFF) using `/rc effects`.
-- Show or hide the action bar timer UI with `/rc timer`.
-- **Disable Monster Spawns**: `/rc spawnmonster chunks 99999`
+The compiled beta plugin jar is:
 
-Developed by Eckelsoft
+`build/libs/Paper-Chunk-Randomizer-2.1.0-beta.1.jar`
+
+Drop that jar into your server's `plugins/` folder and restart the server.
+
+## Installation
+
+1. Stop your Paper server.
+2. Copy `Paper-Chunk-Randomizer-2.1.0-beta.1.jar` into `plugins/`.
+3. Start the server.
+4. Configure the plugin in `plugins/Paper-Chunk-Randomizer/config.yml` if needed.
+5. Use `/rc start` in-game to begin the challenge.
+
+## Build From Source
+
+```bash
+gradle build
+```
+
+The build output is written to `build/libs/`.
+
+If you are targeting a different Paper `1.21.x` version, update these values in `gradle.properties`:
+
+- `paper_api_version`
+- `paper_api_compat_version`
+
+## Quick Command Reference
+
+| Command | Description |
+|:--|:--|
+| `/rc start` | Starts the challenge and timer |
+| `/rc stop` | Pauses the challenge and timer |
+| `/rc reset` | Resets the timer to `00:00:00` |
+| `/rc timer` | Toggles the action-bar timer |
+| `/rc timer prefix <text>` | Sets text before the timer |
+| `/rc timer suffix <text>` | Sets text after the timer |
+| `/rc effects` | Toggles chunk-based potion effects |
+| `/rc fluids <true|false>` | Toggles whether water, lava, and fire may be replaced |
+| `/rc exclude add <block>` | Adds a block to the replacement blacklist |
+| `/rc exclude clear` | Clears the custom blacklist |
+| `/rc spawnmonster chunks <value>` | Sets how many unique visited chunks trigger mob spawns |
+| `/rc spawnmonster max <value>` | Sets the max number of surprise mobs |
+| `/rc debug <0-3>` | Sets debug output level |
+
+Detailed command documentation lives in [docs/COMMANDS-WIKI.md](/Users/razvancostache/Documents/chuckys/docs/COMMANDS-WIKI.md).
+
+## Permissions
+
+| Permission | Description | Default |
+|:--|:--|:--|
+| `paperchunkrandomizer.admin` | Allows `/rc exclude add` and `/rc exclude clear` | `op` |
+
+## Default Config
+
+```yaml
+debug-level: 1
+timer-visible: true
+effects-enabled: true
+spawn-interval: 16
+max-mobs: 8
+replace-fluids: false
+timer-prefix: ""
+timer-suffix: ""
+custom-blacklist: []
+```
+
+## Config Options
+
+| Key | Description |
+|:--|:--|
+| `debug-level` | `0-3` debug output level |
+| `timer-visible` | Whether the action-bar timer is shown |
+| `effects-enabled` | Whether chunk potion effects are active |
+| `spawn-interval` | Unique chunk visits required to trigger surprise spawns |
+| `max-mobs` | Maximum amount of surprise mobs spawned at once |
+| `replace-fluids` | Whether protected fluids and fire may be replaced |
+| `timer-prefix` | Text shown before the timer |
+| `timer-suffix` | Text shown after the timer |
+| `custom-blacklist` | Materials excluded from becoming chunk replacements |
+
+## How The Paper Beta Works
+
+- Chunk replacement is deterministic per world and chunk, so revisiting the same chunk gives the same result.
+- The plugin uses Paper `Material`, `PotionEffectType`, and `EntityType` pools instead of Fabric registries.
+- Replacement candidates are filtered to avoid fragile or problematic block types such as portals, stairs, rails, banners, beds, signs, and similar special blocks.
+- This is a beta Paper adaptation, so behavior is intentionally close to the original but not a byte-for-byte Fabric clone.
+
+## Gameplay Notes
+
+- Players receive Chunk Walker boots the first time the challenge is started.
+- Chunk Walker boots prevent chunk randomization and chunk effects for the wearer.
+- Chunk Walker boots lose `10` durability per protected chunk entry.
+- Use `/rc exclude add minecraft:...` to avoid especially laggy or annoying replacement blocks.
+- Use `/rc spawnmonster chunks 99999` if you want to effectively disable surprise mob spawns.
+
+## Included Docs
+
+- [README.md](/Users/razvancostache/Documents/chuckys/README.md)
+- [docs/COMMANDS-WIKI.md](/Users/razvancostache/Documents/chuckys/docs/COMMANDS-WIKI.md)
+
+## Credit Notice
+
+Full credit for the original Chunk Randomizer idea and original project goes to Eckelsoft. This Paper-Chunk-Randomizer beta build is an adaptation built on top of that original work.

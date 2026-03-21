@@ -1,57 +1,60 @@
 package org.eckelsoft.chunkblockmod;
 
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.SpawnGroup;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Player;
 
-public class MobSpawnManager {
-    private static final List<EntityType<?>> DYNAMIC_MOB_POOL = new ArrayList<>();
+public final class MobSpawnManager {
     private static final Random RANDOM = new Random();
+    private final List<EntityType> dynamicMobPool = new ArrayList<>();
 
-    static {
-        for (EntityType<?> type : Registries.ENTITY_TYPE) {
-            if (type != EntityType.ENDER_DRAGON &&
-                    type != EntityType.MARKER &&
-                    type != EntityType.AREA_EFFECT_CLOUD &&
-                    type != EntityType.FISHING_BOBBER) {
-
-                if (type.getSpawnGroup() != SpawnGroup.MISC) {
-                    DYNAMIC_MOB_POOL.add(type);
-                }
+    public MobSpawnManager() {
+        for (EntityType type : EntityType.values()) {
+            if (type == null || type == EntityType.ENDER_DRAGON) {
+                continue;
+            }
+            if (type.isSpawnable() && type.isAlive()) {
+                dynamicMobPool.add(type);
             }
         }
-        DYNAMIC_MOB_POOL.add(EntityType.WITHER);
-        DYNAMIC_MOB_POOL.add(EntityType.LIGHTNING_BOLT);
+
+        if (!dynamicMobPool.contains(EntityType.WITHER)) {
+            dynamicMobPool.add(EntityType.WITHER);
+        }
+        dynamicMobPool.add(EntityType.LIGHTNING_BOLT);
     }
 
-    public static void triggerSurpriseSpawn(ServerWorld world, ServerPlayerEntity player) {
-        if (DYNAMIC_MOB_POOL.isEmpty()) return;
+    public void triggerSurpriseSpawn(World world, Player player, int maxMobs, int debugLevel) {
+        if (dynamicMobPool.isEmpty()) {
+            return;
+        }
 
-        int amount = RANDOM.nextInt(ModState.getMaxMobs()) + 1;
-        BlockPos playerPos = player.getBlockPos();
+        int amount = RANDOM.nextInt(maxMobs) + 1;
+        Location base = player.getLocation();
 
-        for (int i = 0; i < amount; i++) {
-            EntityType<?> type = DYNAMIC_MOB_POOL.get(RANDOM.nextInt(DYNAMIC_MOB_POOL.size()));
-            BlockPos spawnPos = playerPos.add(RANDOM.nextInt(10) - 5, 1, RANDOM.nextInt(10) - 5);
+        for (int index = 0; index < amount; index++) {
+            EntityType type = dynamicMobPool.get(RANDOM.nextInt(dynamicMobPool.size()));
+            Location spawnLocation = base.clone().add(RANDOM.nextInt(11) - 5, 1, RANDOM.nextInt(11) - 5);
 
             try {
-                type.spawn(world, spawnPos, SpawnReason.EVENT);
-            } catch (Exception e) {
-                // ignore
+                if (type == EntityType.LIGHTNING_BOLT) {
+                    world.strikeLightning(spawnLocation);
+                } else {
+                    world.spawnEntity(spawnLocation, type);
+                }
+            } catch (Exception ignored) {
+                // Some entity types have special spawn rules; skipping those keeps the surprise pool broad without hard-failing.
             }
         }
 
-        if (ModState.getDebugLevel() == 1) {
-            player.sendMessage(Text.literal("§6" + amount + " mobs have spawned!").formatted(Formatting.GOLD), false);
+        if (debugLevel == 1) {
+            player.sendMessage(Component.text(amount + " mobs have spawned!", NamedTextColor.GOLD));
         }
     }
 }

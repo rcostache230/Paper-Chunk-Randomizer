@@ -1,73 +1,205 @@
 package org.eckelsoft.chunkblockmod;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
-import net.minecraft.block.*;
+import org.bukkit.Material;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.plugin.java.JavaPlugin;
 
-public class ModState {
-    private static boolean active = false;
-    private static int debugLevel = 1;
-    private static boolean timerVisible = true;
-    private static boolean effectsEnabled = true;
-    private static int spawnInterval = 16;
-    private static int maxMobs = 8;
-    private static boolean replaceFluids = false;
+public final class ModState {
+    private final JavaPlugin plugin;
+    private final Set<Material> customBlacklist = new HashSet<>();
 
-    private static long startTime = 0;
-    private static long elapsedBeforeStop = 0;
-    private static String timerPrefix = "";
-    private static String timerSuffix = "";
+    private boolean active;
+    private int debugLevel;
+    private boolean timerVisible;
+    private boolean effectsEnabled;
+    private int spawnInterval;
+    private int maxMobs;
+    private boolean replaceFluids;
+    private long startTimeMillis;
+    private long elapsedBeforeStopMillis;
+    private String timerPrefix;
+    private String timerSuffix;
 
-    public static boolean isActive() { return active; }
-    public static void setActive(boolean active, net.minecraft.server.MinecraftServer server) {
-        if (active && !ModState.active) {
-            if (getElapsedTime() == 0 && server != null) {
-                server.getPlayerManager().getPlayerList().forEach(player -> {
-                    net.minecraft.item.ItemStack boots = new net.minecraft.item.ItemStack(net.minecraft.item.Items.DIAMOND_BOOTS);
-                    boots.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
-                            net.minecraft.text.Text.literal("Chunk Walker").formatted(net.minecraft.util.Formatting.AQUA));
+    public ModState(JavaPlugin plugin) {
+        this.plugin = plugin;
+        load();
+    }
 
-                    player.getInventory().insertStack(boots);
-                });
-            }
-            startTime = System.currentTimeMillis();
-        } else if (!active && ModState.active) {
-            elapsedBeforeStop += (System.currentTimeMillis() - startTime);
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        if (active == this.active) {
+            return;
         }
-        ModState.active = active;
+
+        if (active) {
+            startTimeMillis = System.currentTimeMillis();
+        } else {
+            elapsedBeforeStopMillis += System.currentTimeMillis() - startTimeMillis;
+        }
+
+        this.active = active;
     }
 
-    public static int getDebugLevel() { return debugLevel; }
-    public static void setDebugLevel(int level) { debugLevel = level; }
-    public static boolean isTimerVisible() { return timerVisible; }
-    public static void setTimerVisible(boolean visible) { ModState.timerVisible = visible; }
-    public static boolean areEffectsEnabled() { return effectsEnabled; }
-    public static void setEffectsEnabled(boolean enabled) { effectsEnabled = enabled; }
-    public static int getSpawnInterval() { return spawnInterval; }
-    public static void setSpawnInterval(int interval) { spawnInterval = interval; }
-    public static int getMaxMobs() { return maxMobs; }
-    public static void setMaxMobs(int max) { maxMobs = max; }
-    public static boolean shouldReplaceFluids() { return replaceFluids; }
-    public static void setReplaceFluids(boolean replace) { replaceFluids = replace; }
-    public static void resetTimer() { startTime = System.currentTimeMillis(); elapsedBeforeStop = 0; }
-    public static long getElapsedTime() {
-        if (!active) return elapsedBeforeStop;
-        return elapsedBeforeStop + (System.currentTimeMillis() - startTime);
+    public int getDebugLevel() {
+        return debugLevel;
     }
-    public static String getTimerPrefix() { return timerPrefix; }
-    public static void setTimerPrefix(String prefix) { timerPrefix = prefix; }
-    public static String getTimerSuffix() { return timerSuffix; }
-    public static void setTimerSuffix(String suffix) { timerSuffix = suffix; }
 
-    // Discord user request - manually exclude replace-blocks
-    private static final Set<Block> customBlacklist = new HashSet<>();
-    public static void addToBlacklist(Block block) {
-        customBlacklist.add(block);
+    public void setDebugLevel(int debugLevel) {
+        this.debugLevel = debugLevel;
+        save();
     }
-    public static void clearCustomBlacklist() {
-        customBlacklist.clear();
+
+    public boolean isTimerVisible() {
+        return timerVisible;
     }
-    public static Set<Block> getCustomBlacklist() {
+
+    public void setTimerVisible(boolean timerVisible) {
+        this.timerVisible = timerVisible;
+        save();
+    }
+
+    public boolean areEffectsEnabled() {
+        return effectsEnabled;
+    }
+
+    public void setEffectsEnabled(boolean effectsEnabled) {
+        this.effectsEnabled = effectsEnabled;
+        save();
+    }
+
+    public int getSpawnInterval() {
+        return spawnInterval;
+    }
+
+    public void setSpawnInterval(int spawnInterval) {
+        this.spawnInterval = spawnInterval;
+        save();
+    }
+
+    public int getMaxMobs() {
+        return maxMobs;
+    }
+
+    public void setMaxMobs(int maxMobs) {
+        this.maxMobs = maxMobs;
+        save();
+    }
+
+    public boolean shouldReplaceFluids() {
+        return replaceFluids;
+    }
+
+    public void setReplaceFluids(boolean replaceFluids) {
+        this.replaceFluids = replaceFluids;
+        save();
+    }
+
+    public void resetTimer() {
+        elapsedBeforeStopMillis = 0L;
+        startTimeMillis = active ? System.currentTimeMillis() : 0L;
+    }
+
+    public long getElapsedTimeMillis() {
+        if (!active) {
+            return elapsedBeforeStopMillis;
+        }
+        return elapsedBeforeStopMillis + (System.currentTimeMillis() - startTimeMillis);
+    }
+
+    public String getTimerPrefix() {
+        return timerPrefix;
+    }
+
+    public void setTimerPrefix(String timerPrefix) {
+        this.timerPrefix = timerPrefix;
+        save();
+    }
+
+    public String getTimerSuffix() {
+        return timerSuffix;
+    }
+
+    public void setTimerSuffix(String timerSuffix) {
+        this.timerSuffix = timerSuffix;
+        save();
+    }
+
+    public Set<Material> getCustomBlacklist() {
         return customBlacklist;
+    }
+
+    public void addToBlacklist(Material block) {
+        customBlacklist.add(block);
+        save();
+    }
+
+    public void clearCustomBlacklist() {
+        customBlacklist.clear();
+        save();
+    }
+
+    public String formatDisplayTime() {
+        long timeMs = getElapsedTimeMillis();
+        long seconds = (timeMs / 1_000L) % 60;
+        long minutes = (timeMs / 60_000L) % 60;
+        long hours = timeMs / 3_600_000L;
+        String base = String.format("%02d:%02d:%02d", hours, minutes, seconds);
+        String prefix = timerPrefix == null || timerPrefix.isBlank() ? "" : timerPrefix + " ";
+        String suffix = timerSuffix == null || timerSuffix.isBlank() ? "" : " " + timerSuffix;
+        return prefix + base + suffix;
+    }
+
+    private void load() {
+        FileConfiguration config = plugin.getConfig();
+        debugLevel = config.getInt("debug-level", 1);
+        timerVisible = config.getBoolean("timer-visible", true);
+        effectsEnabled = config.getBoolean("effects-enabled", true);
+        spawnInterval = Math.max(1, config.getInt("spawn-interval", 16));
+        maxMobs = clamp(config.getInt("max-mobs", 8), 1, 64);
+        replaceFluids = config.getBoolean("replace-fluids", false);
+        timerPrefix = config.getString("timer-prefix", "");
+        timerSuffix = config.getString("timer-suffix", "");
+
+        customBlacklist.clear();
+        for (String materialName : config.getStringList("custom-blacklist")) {
+            Material material = Material.matchMaterial(
+                    materialName.toUpperCase(Locale.ROOT).replace("MINECRAFT:", "").replace('-', '_')
+            );
+            if (material != null && material.isBlock()) {
+                customBlacklist.add(material);
+            }
+        }
+    }
+
+    private void save() {
+        FileConfiguration config = plugin.getConfig();
+        config.set("debug-level", debugLevel);
+        config.set("timer-visible", timerVisible);
+        config.set("effects-enabled", effectsEnabled);
+        config.set("spawn-interval", spawnInterval);
+        config.set("max-mobs", maxMobs);
+        config.set("replace-fluids", replaceFluids);
+        config.set("timer-prefix", timerPrefix);
+        config.set("timer-suffix", timerSuffix);
+
+        List<String> materials = new ArrayList<>(customBlacklist.size());
+        for (Material material : customBlacklist) {
+            materials.add(material.name().toLowerCase(Locale.ROOT));
+        }
+        materials.sort(String::compareTo);
+        config.set("custom-blacklist", materials);
+        plugin.saveConfig();
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

@@ -1,4 +1,7 @@
 .idea
 .gradle
+.gradle-user-home
+build
+.DS_Store
 gradle
 run

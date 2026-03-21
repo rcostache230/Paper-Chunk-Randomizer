@@ -1,58 +1,63 @@
 package org.eckelsoft.chunkblockmod;
 
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.ChunkPos;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Chunk;
+import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffectType;
 
-public class EffectManager {
-    private static final List<RegistryEntry<StatusEffect>> VALID_EFFECTS = new ArrayList<>();
+public final class EffectManager {
+    private final List<PotionEffectType> validEffects = new ArrayList<>();
 
-    static {
-        for (RegistryEntry<StatusEffect> effect : Registries.STATUS_EFFECT.getIndexedEntries()) {
-            if (!effect.equals(StatusEffects.BLINDNESS) &&
-                    !effect.equals(StatusEffects.DARKNESS) &&
-                    !effect.equals(StatusEffects.NAUSEA)) {
-                VALID_EFFECTS.add(effect);
+    public EffectManager() {
+        for (PotionEffectType effect : PotionEffectType.values()) {
+            if (effect == null
+                    || effect == PotionEffectType.BLINDNESS
+                    || effect == PotionEffectType.DARKNESS
+                    || effect == PotionEffectType.NAUSEA) {
+                continue;
             }
+            validEffects.add(effect);
         }
     }
 
-    public static void applyChunkEffect(ServerPlayerEntity player, ChunkPos chunkPos) {
-        if (VALID_EFFECTS.isEmpty()) return;
-
-        long seed = (long) chunkPos.x * 49632L + (long) chunkPos.z * 32517L;
-        Random chunkRandom = new Random(seed);
-
-        RegistryEntry<StatusEffect> effect = VALID_EFFECTS.get(chunkRandom.nextInt(VALID_EFFECTS.size()));
-        ServerWorld world = player.getEntityWorld();
-
-        int amplifier;
-        if (effect.value().isInstant()) {
-            amplifier = chunkRandom.nextInt(2);
-
-            effect.value().applyUpdateEffect(world, player, amplifier);
-
-            if (ModState.getDebugLevel() == 3) {
-                player.sendMessage(Text.literal("§d[LOG] Instant-Effect: " + effect.value().getName().getString()).formatted(Formatting.LIGHT_PURPLE), false);
-            }
-        } else {
-            amplifier = chunkRandom.nextInt(5);
-            int durationTicks = chunkRandom.nextBoolean() ? (20 * 8) : (20 * 16);
-            player.addStatusEffect(new StatusEffectInstance(effect, durationTicks, amplifier));
-
-            if (ModState.getDebugLevel() == 3) {
-                player.sendMessage(Text.literal("§d[LOG] Effect: " + effect.value().getName().getString() + " (Duration: " + (durationTicks/20) + "s, Amp: " + amplifier + ")").formatted(Formatting.LIGHT_PURPLE), false);
-            }
+    public void applyChunkEffect(Player player, Chunk chunk, int debugLevel) {
+        if (validEffects.isEmpty()) {
+            return;
         }
+
+        long seed = chunk.getWorld().getSeed()
+                ^ ((long) chunk.getX() * 49_632L)
+                ^ ((long) chunk.getZ() * 32_517L);
+        Random random = new Random(seed);
+        PotionEffectType effect = validEffects.get(random.nextInt(validEffects.size()));
+
+        if (effect.isInstant()) {
+            int amplifier = random.nextInt(2);
+            player.addPotionEffect(effect.createEffect(1, amplifier));
+            if (debugLevel == 3) {
+                player.sendMessage(Component.text("[LOG] Instant effect: " + prettify(effect), NamedTextColor.LIGHT_PURPLE));
+            }
+            return;
+        }
+
+        int amplifier = random.nextInt(5);
+        int duration = random.nextBoolean() ? 20 * 8 : 20 * 16;
+        player.addPotionEffect(effect.createEffect(duration, amplifier));
+
+        if (debugLevel == 3) {
+            player.sendMessage(Component.text(
+                    "[LOG] Effect: " + prettify(effect) + " (Duration: " + (duration / 20) + "s, Amp: " + amplifier + ")",
+                    NamedTextColor.LIGHT_PURPLE
+            ));
+        }
+    }
+
+    private String prettify(PotionEffectType effect) {
+        return effect.getKey().getKey().replace('_', ' ').toLowerCase(Locale.ROOT);
     }
 }

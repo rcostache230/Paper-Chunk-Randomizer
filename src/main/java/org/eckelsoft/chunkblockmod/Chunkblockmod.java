@@ -1,189 +1,377 @@
 package org.eckelsoft.chunkblockmod;
 
-import net.minecraft.block.*;
-import net.minecraft.command.argument.*;
-import com.mojang.brigadier.arguments.BoolArgumentType;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.StringUtil;
 
-public class Chunkblockmod implements ModInitializer {
+public final class Chunkblockmod extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+    private static final List<String> BLOCK_MATERIAL_NAMES = Arrays.stream(Material.values())
+            .filter(Material::isBlock)
+            .map(material -> "minecraft:" + material.name().toLowerCase(Locale.ROOT))
+            .collect(Collectors.toList());
+
+    private ModState state;
+    private ChunkReplacementManager chunkReplacementManager;
+    private boolean actionBarVisible;
+
     @Override
-    public void onInitialize() {
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            long timeMs = ModState.getElapsedTime();
-            long sec = (timeMs / 1000) % 60;
-            long min = (timeMs / (1000 * 60)) % 60;
-            long hr = (timeMs / (1000 * 60 * 60));
-            String timeStr = String.format("%02d:%02d:%02d", hr, min, sec);
+    public void onEnable() {
+        saveDefaultConfig();
 
-            String prefix = ModState.getTimerPrefix().isEmpty() ? "" : ModState.getTimerPrefix() + " ";
-            String suffix = ModState.getTimerSuffix().isEmpty() ? "" : " " + ModState.getTimerSuffix();
-            String fullDisplay = prefix + timeStr + suffix;
+        this.state = new ModState(this);
+        EffectManager effectManager = new EffectManager();
+        MobSpawnManager mobSpawnManager = new MobSpawnManager();
+        this.chunkReplacementManager = new ChunkReplacementManager(this, state, effectManager, mobSpawnManager);
 
-            Text message = !ModState.isActive() ?
-                    (timeMs == 0 ?
-                            Text.literal("Type \"/rc start\" to begin. Config: \"/rc \"").formatted(Formatting.YELLOW) :
-                            Text.literal("Paused: " + fullDisplay).formatted(Formatting.RED)) :
-                    Text.literal(fullDisplay).formatted(Formatting.GREEN);
+        PluginCommand command = getCommand("rc");
+        if (command != null) {
+            command.setExecutor(this);
+            command.setTabCompleter(this);
+        } else {
+            getLogger().warning("Command /rc was not registered. Check plugin.yml.");
+        }
 
-            if (ModState.isTimerVisible()) {
-                server.getPlayerManager().getPlayerList().forEach(p -> p.sendMessage(message, true));
+        getServer().getPluginManager().registerEvents(this, this);
+        startTimerTask();
+        startCleanupTask();
+    }
+
+    private void startTimerTask() {
+        getServer().getScheduler().runTaskTimer(this, () -> {
+            if (!state.isTimerVisible()) {
+                clearActionBarIfNeeded();
+                return;
             }
-            server.getWorlds().forEach(ChunkReplacementManager::tick);
-        });
 
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            dispatcher.register(CommandManager.literal("rc")
-                    .then(CommandManager.literal("start")
-                            .executes(c -> {
-                                ModState.setActive(true, c.getSource().getServer());
-                                return 1;
-                            })
-                    )
+            Component message = null;
+            if (!state.isActive()) {
+                if (state.getElapsedTimeMillis() > 0) {
+                    message = Component.text("Paused: " + state.formatDisplayTime(), NamedTextColor.RED);
+                }
+            } else {
+                message = Component.text(state.formatDisplayTime(), NamedTextColor.GREEN);
+            }
 
-                    .then(CommandManager.literal("stop")
-                            .executes(c -> {
-                                ModState.setActive(false, c.getSource().getServer());
-                                return 1;
-                            })
-                    )
+            if (message == null) {
+                clearActionBarIfNeeded();
+                return;
+            }
 
-                    .then(CommandManager.literal("fluids")
-                            .then(CommandManager.argument("enabled", BoolArgumentType.bool())
-                                    .executes(c -> {
-                                        boolean enabled = BoolArgumentType.getBool(c, "enabled");
-                                        ModState.setReplaceFluids(enabled);
-                                        c.getSource().sendFeedback(() -> Text.literal("Replace Fluids: " + enabled), false);
-                                        return 1;
-                                    })
-                            )
-                    )
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                player.sendActionBar(message);
+            }
+            actionBarVisible = true;
+        }, 1L, 10L);
+    }
 
-                    .then(CommandManager.literal("reset")
-                            .executes(c -> {
-                                ModState.resetTimer();
-                                c.getSource().sendFeedback(() -> Text.literal("Timer reset to 00:00:00"), false);
-                                return 1;
-                            })
-                    )
+    private void clearActionBarIfNeeded() {
+        if (!actionBarVisible) {
+            return;
+        }
 
-                    .then(CommandManager.literal("effects")
-                            .executes(c -> {
-                                ModState.setEffectsEnabled(!ModState.areEffectsEnabled());
-                                c.getSource().sendFeedback(
-                                        () -> Text.literal("Effects: " + ModState.areEffectsEnabled()), false
-                                );
-                                return 1;
-                            })
-                    )
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.sendActionBar(Component.empty());
+        }
+        actionBarVisible = false;
+    }
 
-                    .then(CommandManager.literal("exclude")
-                            .requires(source -> source.hasPermissionLevel(2)) // Nur für Admins/OPs
-                            .executes(c -> {
-                                c.getSource().sendFeedback(() -> Text.literal("USE: /rc exclude add <block> OR: /rc exclude clear"), false);
-                                return 1;
-                            })
-                            .then(CommandManager.literal("add")
-                                    .then(CommandManager.argument("block", BlockStateArgumentType.blockState(registryAccess))
-                                            .executes(c -> {
-                                                Block block = BlockStateArgumentType.getBlockState(c, "block").getBlockState().getBlock();
-                                                ModState.addToBlacklist(block);
-                                                c.getSource().sendFeedback(() -> Text.literal("§6[ChunkMod] §f" + block.getName().getString() + " will be skipped from now on."), true);
-                                                return 1;
-                                            })
-                                    )
-                            )
-                            .then(CommandManager.literal("clear")
-                                    .executes(c -> {
-                                        ModState.clearCustomBlacklist();
-                                        ChunkReplacementManager.reloadBlocks(c.getSource().getWorld());
-                                        c.getSource().sendFeedback(() -> Text.literal("Custom blacklist cleared."), true);
-                                        return 1;
-                                    })
-                            )
-                    )
+    private void startCleanupTask() {
+        getServer().getScheduler().runTaskTimer(this, chunkReplacementManager::removeExcessItems, 100L, 100L);
+    }
 
-                    .then(CommandManager.literal("debug")
-                            .executes(c -> {
-                                ModState.setDebugLevel(0);
-                                c.getSource().sendFeedback(() -> Text.literal("Debug mode: OFF"), false);
-                                return 1;
-                            })
-                            .then(CommandManager.argument("level", IntegerArgumentType.integer(0, 3))
-                                    .executes(c -> {
-                                        int level = IntegerArgumentType.getInteger(c, "level");
-                                        ModState.setDebugLevel(level);
-                                        String msg;
-                                        switch (level) {
-                                            case 1 -> msg = "ON (Mobs only)";
-                                            case 2 -> msg = "ON (Chunk Blocktype only)";
-                                            case 3 -> msg = "ON (Effects/Buffs only)";
-                                            default -> msg = "OFF";
-                                        }
-                                        c.getSource().sendFeedback(
-                                                () -> Text.literal("Debug Level set to: " + msg), false
-                                        );
-                                        return 1;
-                                    })
-                            )
-                    )
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerMove(PlayerMoveEvent event) {
+        if (!state.isActive() || event.getTo() == null) {
+            return;
+        }
 
-                    .then(CommandManager.literal("spawnmonster")
-                            .then(CommandManager.literal("chunks")
-                                    .then(CommandManager.argument("val", IntegerArgumentType.integer(1))
-                                            .executes(c -> {
-                                                ModState.setSpawnInterval(
-                                                        IntegerArgumentType.getInteger(c, "val")
-                                                );
-                                                return 1;
-                                            })
-                                    )
-                            )
-                            .then(CommandManager.literal("max")
-                                    .then(CommandManager.argument("val", IntegerArgumentType.integer(1, 64))
-                                            .executes(c -> {
-                                                ModState.setMaxMobs(
-                                                        IntegerArgumentType.getInteger(c, "val")
-                                                );
-                                                return 1;
-                                            })
-                                    )
-                            )
-                    )
+        if (event.getFrom().getWorld() == event.getTo().getWorld()
+                && (event.getFrom().getBlockX() >> 4) == (event.getTo().getBlockX() >> 4)
+                && (event.getFrom().getBlockZ() >> 4) == (event.getTo().getBlockZ() >> 4)) {
+            return;
+        }
 
-                    .then(CommandManager.literal("timer")
-                            .then(CommandManager.literal("prefix")
-                                    .then(CommandManager.argument("text", StringArgumentType.greedyString())
-                                            .executes(c -> {
-                                                ModState.setTimerPrefix(
-                                                        StringArgumentType.getString(c, "text")
-                                                );
-                                                return 1;
-                                            })
-                                    )
-                            )
-                            .then(CommandManager.literal("suffix")
-                                    .then(CommandManager.argument("text", StringArgumentType.greedyString())
-                                            .executes(c -> {
-                                                ModState.setTimerSuffix(
-                                                        StringArgumentType.getString(c, "text")
-                                                );
-                                                return 1;
-                                            })
-                                    )
-                            )
-                            .executes(c -> {
-                                ModState.setTimerVisible(!ModState.isTimerVisible());
-                                return 1;
-                            })
-                    )
-            );
-        });
+        chunkReplacementManager.handleChunkEntry(event.getPlayer(), event.getTo().getChunk());
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!command.getName().equalsIgnoreCase("rc")) {
+            return false;
+        }
+
+        if (args.length == 0) {
+            sendUsage(sender);
+            return true;
+        }
+
+        String subcommand = args[0].toLowerCase(Locale.ROOT);
+        switch (subcommand) {
+            case "start" -> {
+                boolean shouldGiveBoots = state.getElapsedTimeMillis() == 0;
+                state.setActive(true);
+                if (shouldGiveBoots) {
+                    Bukkit.getOnlinePlayers().forEach(chunkReplacementManager::giveChunkWalkerBoots);
+                }
+                sender.sendMessage(Component.text("Chunk randomizer started.", NamedTextColor.GREEN));
+                return true;
+            }
+            case "stop" -> {
+                state.setActive(false);
+                sender.sendMessage(Component.text("Chunk randomizer paused.", NamedTextColor.RED));
+                return true;
+            }
+            case "reset" -> {
+                state.resetTimer();
+                sender.sendMessage(Component.text("Timer reset to 00:00:00.", NamedTextColor.YELLOW));
+                return true;
+            }
+            case "effects" -> {
+                state.setEffectsEnabled(!state.areEffectsEnabled());
+                sender.sendMessage(Component.text("Effects: " + state.areEffectsEnabled(), NamedTextColor.AQUA));
+                return true;
+            }
+            case "fluids" -> {
+                if (args.length < 2) {
+                    sender.sendMessage(Component.text("Usage: /rc fluids <true|false>", NamedTextColor.RED));
+                    return true;
+                }
+                if (!"true".equalsIgnoreCase(args[1]) && !"false".equalsIgnoreCase(args[1])) {
+                    sender.sendMessage(Component.text("Usage: /rc fluids <true|false>", NamedTextColor.RED));
+                    return true;
+                }
+                state.setReplaceFluids(Boolean.parseBoolean(args[1]));
+                sender.sendMessage(Component.text("Replace fluids: " + state.shouldReplaceFluids(), NamedTextColor.AQUA));
+                return true;
+            }
+            case "exclude" -> {
+                if (!sender.hasPermission("paperchunkrandomizer.admin")) {
+                    sender.sendMessage(Component.text("You do not have permission to manage the blacklist.", NamedTextColor.RED));
+                    return true;
+                }
+                return handleExcludeCommand(sender, args);
+            }
+            case "debug" -> {
+                if (args.length == 1) {
+                    state.setDebugLevel(0);
+                    sender.sendMessage(Component.text("Debug mode: OFF", NamedTextColor.GRAY));
+                    return true;
+                }
+
+                Integer level = parseInteger(args[1]);
+                if (level == null || level < 0 || level > 3) {
+                    sender.sendMessage(Component.text("Usage: /rc debug <0-3>", NamedTextColor.RED));
+                    return true;
+                }
+
+                state.setDebugLevel(level);
+                String message = switch (level) {
+                    case 1 -> "ON (Mobs only)";
+                    case 2 -> "ON (Chunk Blocktype only)";
+                    case 3 -> "ON (Effects/Buffs only)";
+                    default -> "OFF";
+                };
+                sender.sendMessage(Component.text("Debug level set to: " + message, NamedTextColor.GRAY));
+                return true;
+            }
+            case "spawnmonster" -> {
+                return handleSpawnMonsterCommand(sender, args);
+            }
+            case "timer" -> {
+                return handleTimerCommand(sender, args);
+            }
+            default -> {
+                sendUsage(sender);
+                return true;
+            }
+        }
+    }
+
+    private boolean handleExcludeCommand(CommandSender sender, String[] args) {
+        if (args.length == 1) {
+            sender.sendMessage(Component.text("Use /rc exclude add <block> or /rc exclude clear", NamedTextColor.YELLOW));
+            return true;
+        }
+
+        String action = args[1].toLowerCase(Locale.ROOT);
+        if ("clear".equals(action)) {
+            state.clearCustomBlacklist();
+            sender.sendMessage(Component.text("Custom blacklist cleared.", NamedTextColor.YELLOW));
+            return true;
+        }
+
+        if (!"add".equals(action) || args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /rc exclude add <block>", NamedTextColor.RED));
+            return true;
+        }
+
+        Material block = parseBlockMaterial(args[2]);
+        if (block == null) {
+            sender.sendMessage(Component.text("Unknown or unsupported block: " + args[2], NamedTextColor.RED));
+            return true;
+        }
+
+        state.addToBlacklist(block);
+        sender.sendMessage(Component.text(block.name() + " will be skipped from now on.", NamedTextColor.GOLD));
+        return true;
+    }
+
+    private boolean handleSpawnMonsterCommand(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /rc spawnmonster <chunks|max> <value>", NamedTextColor.RED));
+            return true;
+        }
+
+        Integer value = parseInteger(args[2]);
+        if (value == null) {
+            sender.sendMessage(Component.text("Value must be a number.", NamedTextColor.RED));
+            return true;
+        }
+
+        String action = args[1].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "chunk", "chunks" -> {
+                if (value < 1) {
+                    sender.sendMessage(Component.text("Chunk interval must be at least 1.", NamedTextColor.RED));
+                    return true;
+                }
+                state.setSpawnInterval(value);
+                sender.sendMessage(Component.text("Spawn interval set to every " + value + " visited chunks.", NamedTextColor.GOLD));
+                return true;
+            }
+            case "max" -> {
+                if (value < 1 || value > 64) {
+                    sender.sendMessage(Component.text("Max mobs must be between 1 and 64.", NamedTextColor.RED));
+                    return true;
+                }
+                state.setMaxMobs(value);
+                sender.sendMessage(Component.text("Maximum surprise mobs set to " + value + ".", NamedTextColor.GOLD));
+                return true;
+            }
+            default -> {
+                sender.sendMessage(Component.text("Usage: /rc spawnmonster <chunks|max> <value>", NamedTextColor.RED));
+                return true;
+            }
+        }
+    }
+
+    private boolean handleTimerCommand(CommandSender sender, String[] args) {
+        if (args.length == 1) {
+            state.setTimerVisible(!state.isTimerVisible());
+            sender.sendMessage(Component.text("Timer visible: " + state.isTimerVisible(), NamedTextColor.GREEN));
+            return true;
+        }
+
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /rc timer <prefix|suffix> <text>", NamedTextColor.RED));
+            return true;
+        }
+
+        String value = joinArgs(args, 2);
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "prefix" -> {
+                state.setTimerPrefix(value);
+                sender.sendMessage(Component.text("Timer prefix updated.", NamedTextColor.GREEN));
+                return true;
+            }
+            case "suffix" -> {
+                state.setTimerSuffix(value);
+                sender.sendMessage(Component.text("Timer suffix updated.", NamedTextColor.GREEN));
+                return true;
+            }
+            default -> {
+                sender.sendMessage(Component.text("Usage: /rc timer <prefix|suffix> <text>", NamedTextColor.RED));
+                return true;
+            }
+        }
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (!command.getName().equalsIgnoreCase("rc")) {
+            return List.of();
+        }
+
+        if (args.length == 1) {
+            return copyMatches(args[0], List.of("start", "stop", "reset", "timer", "effects", "fluids", "exclude", "spawnmonster", "debug"));
+        }
+
+        String subcommand = args[0].toLowerCase(Locale.ROOT);
+        if (args.length == 2) {
+            return switch (subcommand) {
+                case "fluids" -> copyMatches(args[1], List.of("true", "false"));
+                case "exclude" -> copyMatches(args[1], List.of("add", "clear"));
+                case "spawnmonster" -> copyMatches(args[1], List.of("chunk", "chunks", "max"));
+                case "timer" -> copyMatches(args[1], List.of("prefix", "suffix"));
+                case "debug" -> copyMatches(args[1], List.of("0", "1", "2", "3"));
+                default -> List.of();
+            };
+        }
+
+        if (args.length == 3 && "exclude".equals(subcommand) && "add".equalsIgnoreCase(args[1])) {
+            return copyMatches(args[2], BLOCK_MATERIAL_NAMES);
+        }
+
+        return List.of();
+    }
+
+    private void sendUsage(CommandSender sender) {
+        sender.sendMessage(Component.text("/rc start | stop | reset | effects", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("/rc fluids <true|false>", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("/rc timer [prefix|suffix <text>]", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("/rc debug <0-3>", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("/rc spawnmonster <chunks|max> <value>", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("/rc exclude add <block> | clear", NamedTextColor.YELLOW));
+    }
+
+    private Material parseBlockMaterial(String input) {
+        String normalized = input.toUpperCase(Locale.ROOT)
+                .replace("MINECRAFT:", "")
+                .replace('-', '_');
+        Material material = Material.matchMaterial(normalized);
+        return material != null && material.isBlock() ? material : null;
+    }
+
+    private Integer parseInteger(String raw) {
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private String joinArgs(String[] args, int start) {
+        StringBuilder builder = new StringBuilder();
+        for (int index = start; index < args.length; index++) {
+            if (index > start) {
+                builder.append(' ');
+            }
+            builder.append(args[index]);
+        }
+        return builder.toString();
+    }
+
+    private List<String> copyMatches(String token, List<String> candidates) {
+        List<String> completions = new ArrayList<>();
+        StringUtil.copyPartialMatches(token, candidates, completions);
+        return completions;
     }
 }

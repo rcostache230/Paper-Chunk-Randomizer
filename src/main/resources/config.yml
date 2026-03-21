@@ -1,0 +1,9 @@
+debug-level: 1
+timer-visible: true
+effects-enabled: true
+spawn-interval: 16
+max-mobs: 8
+replace-fluids: false
+timer-prefix: ""
+timer-suffix: ""
+custom-blacklist: []

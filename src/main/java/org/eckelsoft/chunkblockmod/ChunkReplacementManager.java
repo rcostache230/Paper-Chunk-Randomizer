@@ -1,986 +1,294 @@
 package org.eckelsoft.chunkblockmod;
 
+import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Random;
 import java.util.Set;
-import net.minecraft.block.*;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.enchantment.EnchantmentHelper;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.ChunkPos;
-import java.util.*;
+import java.util.UUID;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Chunk;
+import org.bukkit.GameMode;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Sound;
+import org.bukkit.World;
+import org.bukkit.entity.Item;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
-public class ChunkReplacementManager {
-    private static final Map<UUID, ChunkPos> lastChunkPos = new HashMap<>();
-    private static final Set<ChunkPos> globalVisitedChunks = new HashSet<>();
-    private static final List<Block> validReplacementBlocks = new ArrayList<>();
-    private static final Set<Block> PROTECTED_BLOCKS = new HashSet<>();
-    private static final Set<Block> REPLACEMENT_BLACKLIST = new HashSet<>();
+public final class ChunkReplacementManager {
+    private static final Set<String> EXCLUDED_SUFFIXES = Set.of(
+            "_STAIRS", "_SLAB", "_WALL", "_FENCE", "_FENCE_GATE", "_DOOR", "_TRAPDOOR",
+            "_BED", "_BUTTON", "_PRESSURE_PLATE", "_BANNER", "_SIGN", "_HANGING_SIGN",
+            "_HEAD", "_SKULL", "_TORCH", "_RAIL", "_CARPET"
+    );
+    private static final Set<String> EXCLUDED_TOKENS = Set.of(
+            "PORTAL", "SPAWNER", "CHEST", "SHULKER", "BARRIER", "COMMAND_BLOCK",
+            "JIGSAW", "CANDLE", "CORAL", "SAPLING", "FLOWER", "BUSH", "GRASS",
+            "VINE", "LEAVES", "ROOT", "FUNGUS", "MUSHROOM", "DRIPLEAF", "POTTED",
+            "PANE", "LANTERN", "CAULDRON", "TRIPWIRE", "PISTON", "CAMPFIRE",
+            "REDSTONE", "REPEATER", "COMPARATOR", "SCAFFOLD", "LADDER", "ANVIL",
+            "BELL", "BEACON", "TNT", "BUBBLE", "POWDER_SNOW", "AMETHYST_BUD",
+            "AMETHYST_CLUSTER", "BUDDING_AMETHYST", "FROGSPAWN", "EGG", "PICKLE",
+            "WEEPING_VINES", "TWISTING_VINES", "CAVE_VINES", "PITCHER", "CHORUS",
+            "MOSS_CARPET", "SHELF", "RESIN", "CONCRETE_POWDER"
+    );
+    private static final Set<String> REMOVABLE_ITEM_NAMES = Set.of(
+            "STRING", "LEAF_LITTER", "SKELETON_SKULL", "WITHER_SKELETON_SKULL",
+            "PINK_PETALS", "ALLIUM", "AZURE_BLUET", "BLUE_ORCHID", "CORNFLOWER",
+            "DANDELION", "LILAC", "COCOA_BEANS", "LILY_OF_THE_VALLEY",
+            "ORANGE_TULIP", "OXEYE_DAISY", "PEONY", "PINK_TULIP", "POPPY",
+            "RED_TULIP", "ROSE_BUSH", "SUNFLOWER", "WHITE_TULIP"
+    );
+    private static final Set<Material> EXPLICIT_REPLACEMENT_BLACKLIST = Set.of(
+            Material.AIR,
+            Material.CAVE_AIR,
+            Material.VOID_AIR,
+            Material.STRUCTURE_VOID,
+            Material.END_PORTAL,
+            Material.END_GATEWAY,
+            Material.END_PORTAL_FRAME,
+            Material.NETHER_PORTAL,
+            Material.SPAWNER,
+            Material.BARRIER,
+            Material.LIGHT,
+            Material.COMMAND_BLOCK,
+            Material.CHAIN_COMMAND_BLOCK,
+            Material.REPEATING_COMMAND_BLOCK,
+            Material.JIGSAW
+    );
+    private static final Set<Material> PROTECTED_BLOCKS = Set.of(
+            Material.AIR,
+            Material.CAVE_AIR,
+            Material.VOID_AIR,
+            Material.STRUCTURE_VOID,
+            Material.WATER,
+            Material.LAVA,
+            Material.FIRE,
+            Material.END_PORTAL_FRAME,
+            Material.END_PORTAL,
+            Material.NETHER_PORTAL,
+            Material.END_GATEWAY,
+            Material.SPAWNER
+    );
 
-    private static final Set<Item> REMOVABLE_ITEMS = new HashSet<>(Arrays.<Item>asList(
-            Items.STRING,
-            Items.LEAF_LITTER,
-            Items.SKELETON_SKULL,
-            Items.WITHER_SKELETON_SKULL,
-            Items.ACACIA_SAPLING,
-            Items.BIRCH_SAPLING,
-            Items.SPRUCE_SAPLING,
-            Items.CHERRY_SAPLING,
-            Items.OAK_SAPLING,
-            Items.DARK_OAK_SAPLING,
-            Items.JUNGLE_SAPLING,
-            Items.PALE_OAK_SAPLING,
-            Items.WHEAT_SEEDS,
-            Items.PINK_PETALS,
-            Items.ALLIUM,
-            Items.AZURE_BLUET,
-            Items.BLUE_ORCHID,
-            Items.CORNFLOWER,
-            Items.DANDELION,
-            Items.LILAC,
-            Items.COCOA_BEANS,
-            Items.BEETROOT_SEEDS,
-            Items.MELON_SEEDS,
-            Items.PUMPKIN_SEEDS,
-            Items.TORCHFLOWER_SEEDS,
-            Items.LILY_OF_THE_VALLEY,
-            Items.ORANGE_TULIP,
-            Items.OXEYE_DAISY,
-            Items.PEONY,
-            Items.PINK_TULIP,
-            Items.POPPY,
-            Items.RED_TULIP,
-            Items.ROSE_BUSH,
-            Items.SUNFLOWER,
-            Items.WHITE_TULIP
-    ));
+    private final ModState state;
+    private final EffectManager effectManager;
+    private final MobSpawnManager mobSpawnManager;
+    private final NamespacedKey chunkWalkerKey;
+    private final Set<ChunkKey> visitedChunks = new HashSet<>();
+    private final List<Material> validReplacementBlocks = new ArrayList<>();
 
-    static {
-        PROTECTED_BLOCKS.addAll(Arrays.<Block>asList(
-                // WORLD
-                Blocks.AIR,
-                Blocks.CAVE_AIR,
-                Blocks.VOID_AIR,
-                Blocks.STRUCTURE_VOID,
-                Blocks.WATER,
-                Blocks.LAVA,
-                Blocks.FIRE,
-                Blocks.END_PORTAL_FRAME,
-                Blocks.END_PORTAL,
-                Blocks.NETHER_PORTAL,
-                Blocks.END_GATEWAY,
-                Blocks.SPAWNER,
-                // CHESTS
-                Blocks.CHEST,
-                Blocks.ENDER_CHEST,
-                Blocks.TRAPPED_CHEST,
-                // BEDS
-                Blocks.BLACK_BED,
-                Blocks.BLUE_BED,
-                Blocks.CYAN_BED,
-                Blocks.BROWN_BED,
-                Blocks.GRAY_BED,
-                Blocks.GREEN_BED,
-                Blocks.LIGHT_BLUE_BED,
-                Blocks.LIGHT_GRAY_BED,
-                Blocks.LIME_BED,
-                Blocks.MAGENTA_BED,
-                Blocks.ORANGE_BED,
-                Blocks.PINK_BED,
-                Blocks.PURPLE_BED,
-                Blocks.RED_BED,
-                Blocks.WHITE_BED,
-                Blocks.YELLOW_BED
-        ));
-        REPLACEMENT_BLACKLIST.addAll(Arrays.<Block>asList(
-                Blocks.AIR,
-                Blocks.CAVE_AIR,
-                Blocks.VOID_AIR,
-                Blocks.STRUCTURE_VOID,
-                //Blocks.WATER,
-                //Blocks.LAVA,
-                //Blocks.END_PORTAL_FRAME,
-                //Blocks.GRASS_BLOCK,
-                Blocks.FIRE,
-                Blocks.END_PORTAL,
-                Blocks.NETHER_PORTAL,
-                Blocks.END_GATEWAY,
-                Blocks.SAND,
-                Blocks.SUSPICIOUS_SAND,
-                Blocks.GRAVEL,
-                Blocks.SUSPICIOUS_GRAVEL,
-                Blocks.TNT,
-                Blocks.BELL,
-                Blocks.BEACON,
-                Blocks.CHEST,
-                Blocks.SKELETON_SKULL,
-                Blocks.SKELETON_WALL_SKULL,
-                Blocks.WITHER_SKELETON_SKULL,
-                Blocks.WITHER_SKELETON_WALL_SKULL,
-                Blocks.ENDER_CHEST,
-                Blocks.TRAPPED_CHEST,
-                Blocks.LEAF_LITTER,
-                Blocks.WILDFLOWERS,
-                Blocks.CACTUS_FLOWER,
-                Blocks.CHORUS_FLOWER,
-                Blocks.FLOWER_POT,
-                Blocks.SUGAR_CANE,
-                Blocks.SEAGRASS,
-                Blocks.TALL_SEAGRASS,
-                Blocks.BRAIN_CORAL,
-                Blocks.FIRE_CORAL,
-                Blocks.TUBE_CORAL,
-                Blocks.BUBBLE_CORAL_FAN,
-                Blocks.BUBBLE_CORAL,
-                Blocks.BUBBLE_CORAL_WALL_FAN,
-                Blocks.BUBBLE_COLUMN,
-                Blocks.HORN_CORAL_FAN,
-                Blocks.HORN_CORAL,
-                Blocks.HORN_CORAL_WALL_FAN,
-                Blocks.DEAD_TUBE_CORAL,
-                Blocks.DEAD_FIRE_CORAL,
-                Blocks.DEAD_BUBBLE_CORAL,
-                Blocks.DEAD_BRAIN_CORAL,
-                Blocks.DEAD_HORN_CORAL,
-                Blocks.BRAIN_CORAL_FAN,
-                Blocks.BRAIN_CORAL_WALL_FAN,
-                Blocks.DEAD_BRAIN_CORAL_WALL_FAN,
-                Blocks.FIRE_CORAL_WALL_FAN,
-                Blocks.DEAD_FIRE_CORAL_WALL_FAN,
-                Blocks.DEAD_BUBBLE_CORAL_WALL_FAN,
-                Blocks.DEAD_HORN_CORAL_WALL_FAN,
-                Blocks.DEAD_TUBE_CORAL_WALL_FAN,
-                Blocks.TUBE_CORAL_WALL_FAN,
-                Blocks.DEAD_BRAIN_CORAL_FAN,
-                Blocks.DEAD_BUBBLE_CORAL_FAN,
-                Blocks.DEAD_TUBE_CORAL_FAN,
-                Blocks.BIRCH_LEAVES,
-                Blocks.ACACIA_LEAVES,
-                Blocks.AZALEA_LEAVES,
-                Blocks.CHERRY_LEAVES,
-                Blocks.JUNGLE_LEAVES,
-                Blocks.MANGROVE_LEAVES,
-                Blocks.OAK_LEAVES,
-                Blocks.PALE_OAK_LEAVES,
-                Blocks.SPRUCE_LEAVES,
-                Blocks.FLOWERING_AZALEA_LEAVES,
-                Blocks.DARK_OAK_LEAVES,
-                // Update: no walls, no stairs and no copper statues!
-                Blocks.COPPER_GOLEM_STATUE,
-                Blocks.EXPOSED_COPPER_GOLEM_STATUE,
-                Blocks.OXIDIZED_COPPER_GOLEM_STATUE,
-                Blocks.WEATHERED_COPPER_GOLEM_STATUE,
-                Blocks.WAXED_COPPER_GOLEM_STATUE,
-                Blocks.WAXED_EXPOSED_COPPER_GOLEM_STATUE,
-                Blocks.WAXED_OXIDIZED_COPPER_GOLEM_STATUE,
-                Blocks.WAXED_WEATHERED_COPPER_GOLEM_STATUE,
-                Blocks.COPPER_CHEST,
-                Blocks.EXPOSED_COPPER_CHEST,
-                Blocks.OXIDIZED_COPPER_CHEST,
-                Blocks.WEATHERED_COPPER_CHEST,
-                Blocks.WAXED_COPPER_CHEST,
-                Blocks.WAXED_EXPOSED_COPPER_CHEST,
-                Blocks.WAXED_OXIDIZED_COPPER_CHEST,
-                Blocks.WAXED_WEATHERED_COPPER_CHEST,
-                Blocks.BRICK_WALL,
-                Blocks.RESIN_BRICK_WALL,
-                Blocks.MUD_BRICK_WALL,
-                Blocks.NETHER_BRICK_WALL,
-                Blocks.STONE_BRICK_WALL,
-                Blocks.DEEPSLATE_BRICK_WALL,
-                Blocks.END_STONE_BRICK_WALL,
-                Blocks.MOSSY_STONE_BRICK_WALL,
-                Blocks.POLISHED_BLACKSTONE_BRICK_WALL,
-                Blocks.RED_NETHER_BRICK_WALL,
-                Blocks.TUFF_BRICK_WALL,
-                Blocks.ANDESITE_WALL,
-                Blocks.BLACKSTONE_WALL,
-                Blocks.DIORITE_WALL,
-                Blocks.COBBLESTONE_WALL,
-                Blocks.GRANITE_WALL,
-                Blocks.PRISMARINE_WALL,
-                Blocks.SANDSTONE_WALL,
-                Blocks.TUFF_WALL,
-                Blocks.COBBLED_DEEPSLATE_WALL,
-                Blocks.DEEPSLATE_TILE_WALL,
-                Blocks.MOSSY_COBBLESTONE_WALL,
-                Blocks.POLISHED_BLACKSTONE_WALL,
-                Blocks.POLISHED_DEEPSLATE_WALL,
-                Blocks.RED_SANDSTONE_WALL,
-
-                Blocks.ACACIA_STAIRS,
-                Blocks.ANDESITE_STAIRS,
-                Blocks.BAMBOO_STAIRS,
-                Blocks.BIRCH_STAIRS,
-                Blocks.BRICK_STAIRS,
-                Blocks.BLACKSTONE_STAIRS,
-                Blocks.CHERRY_STAIRS,
-                Blocks.COBBLESTONE_STAIRS,
-                Blocks.CRIMSON_STAIRS,
-                Blocks.DIORITE_STAIRS,
-                Blocks.GRANITE_STAIRS,
-                Blocks.JUNGLE_STAIRS,
-                Blocks.MANGROVE_STAIRS,
-                Blocks.OAK_STAIRS,
-                Blocks.PRISMARINE_STAIRS,
-                Blocks.PURPUR_STAIRS,
-                Blocks.QUARTZ_STAIRS,
-                Blocks.SANDSTONE_STAIRS,
-                Blocks.SPRUCE_STAIRS,
-                Blocks.STONE_STAIRS,
-                Blocks.TUFF_STAIRS,
-                Blocks.WARPED_STAIRS,
-                Blocks.BAMBOO_MOSAIC_STAIRS,
-                Blocks.COBBLED_DEEPSLATE_STAIRS,
-                Blocks.CUT_COPPER_STAIRS,
-                Blocks.DARK_OAK_STAIRS,
-                Blocks.DARK_PRISMARINE_STAIRS,
-                Blocks.DEEPSLATE_BRICK_STAIRS,
-                Blocks.DEEPSLATE_TILE_STAIRS,
-                Blocks.MOSSY_COBBLESTONE_STAIRS,
-                Blocks.MUD_BRICK_STAIRS,
-                Blocks.NETHER_BRICK_STAIRS,
-                Blocks.PALE_OAK_STAIRS,
-                Blocks.POLISHED_ANDESITE_STAIRS,
-                Blocks.POLISHED_BLACKSTONE_STAIRS,
-                Blocks.POLISHED_DEEPSLATE_STAIRS,
-                Blocks.POLISHED_DIORITE_STAIRS,
-                Blocks.POLISHED_GRANITE_STAIRS,
-                Blocks.POLISHED_TUFF_STAIRS,
-                Blocks.RED_SANDSTONE_STAIRS,
-                Blocks.END_STONE_BRICK_STAIRS,
-                Blocks.MOSSY_STONE_BRICK_STAIRS,
-                Blocks.POLISHED_BLACKSTONE_BRICK_STAIRS,
-                Blocks.SMOOTH_RED_SANDSTONE_STAIRS,
-                Blocks.CUT_COPPER_STAIRS,
-                Blocks.EXPOSED_CUT_COPPER_STAIRS,
-                Blocks.OXIDIZED_CUT_COPPER_STAIRS,
-                Blocks.WEATHERED_CUT_COPPER_STAIRS,
-                Blocks.WAXED_CUT_COPPER_STAIRS,
-                Blocks.WAXED_EXPOSED_CUT_COPPER_STAIRS,
-                Blocks.WAXED_OXIDIZED_CUT_COPPER_STAIRS,
-                Blocks.WAXED_WEATHERED_CUT_COPPER_STAIRS,
-                Blocks.RED_NETHER_BRICK_STAIRS,
-                Blocks.SMOOTH_QUARTZ_STAIRS,
-                Blocks.SMOOTH_SANDSTONE_STAIRS,
-
-                Blocks.TORCH,
-                Blocks.WALL_TORCH,
-                Blocks.COPPER_TORCH,
-                Blocks.COPPER_WALL_TORCH,
-                Blocks.REDSTONE_TORCH,
-                Blocks.REDSTONE_WALL_TORCH,
-                Blocks.SOUL_TORCH,
-                Blocks.SOUL_WALL_TORCH,
-                Blocks.COBWEB,
-                Blocks.SNOW,
-                Blocks.CAULDRON,
-                Blocks.LAVA_CAULDRON,
-                Blocks.WATER_CAULDRON,
-                Blocks.POWDER_SNOW_CAULDRON,
-                Blocks.POWDER_SNOW,
-                Blocks.CAMPFIRE,
-                Blocks.SOUL_CAMPFIRE,
-                Blocks.SOUL_FIRE,
-                Blocks.SEA_PICKLE,
-                Blocks.RED_SAND,
-                Blocks.YELLOW_CONCRETE_POWDER,
-                Blocks.PINK_CONCRETE_POWDER,
-                Blocks.BLACK_CONCRETE_POWDER,
-                Blocks.BLUE_CONCRETE_POWDER,
-                Blocks.BROWN_CONCRETE_POWDER,
-                Blocks.GRAY_CONCRETE_POWDER,
-                Blocks.CYAN_CONCRETE_POWDER,
-                Blocks.GREEN_CONCRETE_POWDER,
-                Blocks.LIGHT_BLUE_CONCRETE_POWDER,
-                Blocks.LIGHT_GRAY_CONCRETE_POWDER,
-                Blocks.LIME_CONCRETE_POWDER,
-                Blocks.MAGENTA_CONCRETE_POWDER,
-                Blocks.ORANGE_CONCRETE_POWDER,
-                Blocks.PURPLE_CONCRETE_POWDER,
-                Blocks.RED_CONCRETE_POWDER,
-                Blocks.WHITE_CONCRETE_POWDER,
-                Blocks.ALLIUM,
-                Blocks.AZURE_BLUET,
-                Blocks.BLUE_ORCHID,
-                Blocks.CORNFLOWER,
-                Blocks.DANDELION,
-                Blocks.LILAC,
-                Blocks.LILY_OF_THE_VALLEY,
-                Blocks.ORANGE_TULIP,
-                Blocks.OXEYE_DAISY,
-                Blocks.PEONY,
-                Blocks.PINK_TULIP,
-                Blocks.PINK_PETALS,
-                Blocks.POPPY,
-                Blocks.RED_TULIP,
-                Blocks.SUNFLOWER,
-                Blocks.WHITE_TULIP,
-                Blocks.WITHER_ROSE,
-                Blocks.BROWN_MUSHROOM,
-                Blocks.RED_MUSHROOM,
-                Blocks.BEETROOTS,
-                Blocks.CRIMSON_ROOTS,
-                Blocks.HANGING_ROOTS,
-                Blocks.MANGROVE_ROOTS,
-                Blocks.WARPED_ROOTS,
-                Blocks.MUDDY_MANGROVE_ROOTS,
-                Blocks.BUSH,
-                Blocks.DEAD_BUSH,
-                Blocks.POTTED_DEAD_BUSH,
-                Blocks.POTTED_AZALEA_BUSH,
-                Blocks.POTTED_FLOWERING_AZALEA_BUSH,
-                Blocks.ROSE_BUSH,
-                Blocks.BUSH,
-                Blocks.BUSH,
-                Blocks.FIREFLY_BUSH,
-                Blocks.SWEET_BERRY_BUSH,
-                Blocks.FERN,
-                Blocks.SHORT_DRY_GRASS,
-                Blocks.TALL_DRY_GRASS,
-                Blocks.SHORT_GRASS,
-                Blocks.LARGE_FERN,
-                Blocks.LILY_PAD,
-                Blocks.TALL_GRASS,
-                Blocks.VINE,
-                Blocks.CAVE_VINES,
-                Blocks.AZALEA,
-                Blocks.FLOWERING_AZALEA,
-                Blocks.MANGROVE_PROPAGULE,
-                Blocks.BARRIER,
-                Blocks.CLOSED_EYEBLOSSOM,
-                Blocks.OPEN_EYEBLOSSOM,
-                Blocks.WEEPING_VINES,
-                Blocks.CARROTS,
-                Blocks.POTATOES,
-                Blocks.PISTON,
-                Blocks.PISTON_HEAD,
-                Blocks.MOVING_PISTON,
-                Blocks.FROGSPAWN,
-                Blocks.CANDLE,
-                Blocks.TRIPWIRE,
-                Blocks.TRIPWIRE_HOOK,
-                Blocks.RAIL,
-                Blocks.ACTIVATOR_RAIL,
-                Blocks.DETECTOR_RAIL,
-                Blocks.POWERED_RAIL,
-                Blocks.REPEATER,
-                Blocks.PUMPKIN,
-                Blocks.PUMPKIN_STEM,
-                Blocks.CARVED_PUMPKIN,
-                Blocks.ATTACHED_PUMPKIN_STEM,
-                Blocks.COMPARATOR,
-                Blocks.DRAGON_EGG,
-                Blocks.SNIFFER_EGG,
-                Blocks.PINK_CANDLE,
-                Blocks.COCOA,
-                Blocks.CACTUS,
-                Blocks.MELON,
-                Blocks.MELON_STEM,
-                Blocks.ATTACHED_MELON_STEM,
-                Blocks.BUDDING_AMETHYST,
-                Blocks.AMETHYST_CLUSTER,
-                Blocks.LARGE_AMETHYST_BUD,
-                Blocks.MEDIUM_AMETHYST_BUD,
-                Blocks.SMALL_AMETHYST_BUD,
-                Blocks.REPEATING_COMMAND_BLOCK,
-                Blocks.MOSS_CARPET,
-                Blocks.PALE_MOSS_CARPET,
-                Blocks.BLACK_CARPET,
-                Blocks.BLUE_CARPET,
-                Blocks.CYAN_CARPET,
-                Blocks.BROWN_CARPET,
-                Blocks.GRAY_CARPET,
-                Blocks.GREEN_CARPET,
-                Blocks.LIGHT_BLUE_CARPET,
-                Blocks.LIGHT_GRAY_CARPET,
-                Blocks.LIME_CARPET,
-                Blocks.MAGENTA_CARPET,
-                Blocks.ORANGE_CARPET,
-                Blocks.PINK_CARPET,
-                Blocks.PURPLE_CARPET,
-                Blocks.RED_CARPET,
-                Blocks.WHITE_CARPET,
-                Blocks.YELLOW_CARPET,
-                Blocks.SMALL_DRIPLEAF,
-                Blocks.BIG_DRIPLEAF,
-                Blocks.BIG_DRIPLEAF_STEM,
-                Blocks.WARPED_FUNGUS,
-                Blocks.CRIMSON_FUNGUS,
-                Blocks.SPRUCE_BUTTON,
-                Blocks.POLISHED_BLACKSTONE_BUTTON,
-                Blocks.DARK_OAK_BUTTON,
-                Blocks.WARPED_BUTTON,
-                Blocks.STONE_BUTTON,
-                Blocks.OAK_BUTTON,
-                Blocks.PALE_OAK_BUTTON,
-                Blocks.CHERRY_BUTTON,
-                Blocks.BAMBOO_BUTTON,
-                Blocks.BIRCH_BUTTON,
-                Blocks.ACACIA_BUTTON,
-                Blocks.CRIMSON_BUTTON,
-                Blocks.JUNGLE_BUTTON,
-                Blocks.MANGROVE_BUTTON,
-                Blocks.PITCHER_CROP,
-                Blocks.ACACIA_FENCE_GATE,
-                Blocks.BAMBOO_FENCE_GATE,
-                Blocks.BIRCH_FENCE_GATE,
-                Blocks.CHERRY_FENCE_GATE,
-                Blocks.CRIMSON_FENCE_GATE,
-                Blocks.DARK_OAK_FENCE_GATE,
-                Blocks.JUNGLE_FENCE_GATE,
-                Blocks.MANGROVE_FENCE_GATE,
-                Blocks.OAK_FENCE_GATE,
-                Blocks.PALE_OAK_FENCE_GATE,
-                Blocks.SPRUCE_FENCE_GATE,
-                Blocks.WARPED_FENCE_GATE,
-                Blocks.ACACIA_FENCE,
-                Blocks.DARK_OAK_FENCE,
-                Blocks.PALE_OAK_FENCE,
-                Blocks.NETHER_BRICK_FENCE,
-                Blocks.BAMBOO_FENCE,
-                Blocks.BIRCH_FENCE,
-                Blocks.CHERRY_FENCE,
-                Blocks.CRIMSON_FENCE,
-                Blocks.OAK_FENCE,
-                Blocks.SPRUCE_FENCE,
-                Blocks.MANGROVE_FENCE,
-                Blocks.JUNGLE_FENCE,
-                Blocks.WARPED_FENCE,
-                Blocks.CREEPER_HEAD,
-                Blocks.DRAGON_HEAD,
-                Blocks.PIGLIN_HEAD,
-                Blocks.PLAYER_HEAD,
-                Blocks.ZOMBIE_HEAD,
-                Blocks.PISTON_HEAD,
-                Blocks.CREEPER_WALL_HEAD,
-                Blocks.DRAGON_WALL_HEAD,
-                Blocks.PIGLIN_WALL_HEAD,
-                Blocks.ZOMBIE_WALL_HEAD,
-                Blocks.PLAYER_WALL_HEAD,
-                Blocks.LIGHTNING_ROD,
-                Blocks.EXPOSED_LIGHTNING_ROD,
-                Blocks.OXIDIZED_LIGHTNING_ROD,
-                Blocks.WEATHERED_LIGHTNING_ROD,
-                Blocks.WAXED_LIGHTNING_ROD,
-                Blocks.WAXED_EXPOSED_LIGHTNING_ROD,
-                Blocks.WAXED_OXIDIZED_LIGHTNING_ROD,
-                Blocks.WAXED_WEATHERED_LIGHTNING_ROD,
-                Blocks.ACACIA_SIGN,
-                Blocks.BIRCH_SIGN,
-                Blocks.CHERRY_SIGN,
-                Blocks.JUNGLE_SIGN,
-                Blocks.CRIMSON_SIGN,
-                Blocks.MANGROVE_SIGN,
-                Blocks.BAMBOO_SIGN,
-                Blocks.DARK_OAK_SIGN,
-                Blocks.OAK_SIGN,
-                Blocks.PALE_OAK_SIGN,
-                Blocks.SPRUCE_SIGN,
-                Blocks.WARPED_SIGN,
-                Blocks.ACACIA_WALL_SIGN,
-                Blocks.BIRCH_WALL_SIGN,
-                Blocks.BAMBOO_WALL_SIGN,
-                Blocks.CHERRY_WALL_SIGN,
-                Blocks.CRIMSON_WALL_SIGN,
-                Blocks.DARK_OAK_WALL_SIGN,
-                Blocks.PALE_OAK_WALL_SIGN,
-                Blocks.JUNGLE_WALL_SIGN,
-                Blocks.MANGROVE_WALL_SIGN,
-                Blocks.OAK_WALL_SIGN,
-                Blocks.SPRUCE_WALL_SIGN,
-                Blocks.WARPED_WALL_SIGN,
-                Blocks.ACACIA_WALL_HANGING_SIGN,
-                Blocks.DARK_OAK_WALL_HANGING_SIGN,
-                Blocks.PALE_OAK_WALL_HANGING_SIGN,
-                Blocks.SPRUCE_WALL_HANGING_SIGN,
-                Blocks.CRIMSON_WALL_HANGING_SIGN,
-                Blocks.WARPED_WALL_HANGING_SIGN,
-                Blocks.OAK_WALL_HANGING_SIGN,
-                Blocks.JUNGLE_WALL_HANGING_SIGN,
-                Blocks.CHERRY_WALL_HANGING_SIGN,
-                Blocks.MANGROVE_WALL_HANGING_SIGN,
-                Blocks.BIRCH_WALL_HANGING_SIGN,
-                Blocks.BAMBOO_WALL_HANGING_SIGN,
-                Blocks.BIRCH_HANGING_SIGN,
-                Blocks.ACACIA_HANGING_SIGN,
-                Blocks.DARK_OAK_HANGING_SIGN,
-                Blocks.PALE_OAK_HANGING_SIGN,
-                Blocks.BAMBOO_HANGING_SIGN,
-                Blocks.CHERRY_HANGING_SIGN,
-                Blocks.JUNGLE_HANGING_SIGN,
-                Blocks.CRIMSON_HANGING_SIGN,
-                Blocks.MANGROVE_HANGING_SIGN,
-                Blocks.OAK_HANGING_SIGN,
-                Blocks.SPRUCE_HANGING_SIGN,
-                Blocks.WARPED_HANGING_SIGN,
-                Blocks.LANTERN,
-                Blocks.COPPER_LANTERNS.waxed(),
-                Blocks.COPPER_LANTERNS.waxedExposed(),
-                Blocks.COPPER_LANTERNS.waxedOxidized(),
-                Blocks.COPPER_LANTERNS.waxedWeathered(),
-                Blocks.COPPER_LANTERNS.unaffected(),
-                Blocks.COPPER_LANTERNS.exposed(),
-                Blocks.COPPER_LANTERNS.oxidized(),
-                Blocks.COPPER_LANTERNS.weathered(),
-                Blocks.SOUL_LANTERN,
-                Blocks.LIGHT,
-                Blocks.KELP,
-                Blocks.KELP_PLANT,
-                Blocks.CAVE_VINES_PLANT,
-                Blocks.TWISTING_VINES_PLANT,
-                Blocks.CHORUS_PLANT,
-                Blocks.PITCHER_PLANT,
-                Blocks.WEEPING_VINES_PLANT,
-                Blocks.REDSTONE_WIRE,
-                Blocks.GLOW_LICHEN,
-                Blocks.NETHER_SPROUTS,
-                Blocks.LEVER,
-                Blocks.STICKY_PISTON,
-                Blocks.GLASS_PANE,
-                Blocks.BLACK_STAINED_GLASS_PANE,
-                Blocks.BLUE_STAINED_GLASS_PANE,
-                Blocks.CYAN_STAINED_GLASS_PANE,
-                Blocks.BROWN_STAINED_GLASS_PANE,
-                Blocks.GRAY_STAINED_GLASS_PANE,
-                Blocks.GREEN_STAINED_GLASS_PANE,
-                Blocks.LIGHT_BLUE_STAINED_GLASS_PANE,
-                Blocks.LIGHT_GRAY_STAINED_GLASS_PANE,
-                Blocks.LIME_STAINED_GLASS_PANE,
-                Blocks.MAGENTA_STAINED_GLASS_PANE,
-                Blocks.ORANGE_STAINED_GLASS_PANE,
-                Blocks.PINK_STAINED_GLASS_PANE,
-                Blocks.PURPLE_STAINED_GLASS_PANE,
-                Blocks.RED_STAINED_GLASS_PANE,
-                Blocks.WHITE_STAINED_GLASS_PANE,
-                Blocks.YELLOW_STAINED_GLASS_PANE,
-                // BEDS
-                Blocks.BLACK_BED,
-                Blocks.BLUE_BED,
-                Blocks.CYAN_BED,
-                Blocks.BROWN_BED,
-                Blocks.GRAY_BED,
-                Blocks.GREEN_BED,
-                Blocks.LIGHT_BLUE_BED,
-                Blocks.LIGHT_GRAY_BED,
-                Blocks.LIME_BED,
-                Blocks.MAGENTA_BED,
-                Blocks.ORANGE_BED,
-                Blocks.PINK_BED,
-                Blocks.PURPLE_BED,
-                Blocks.RED_BED,
-                Blocks.WHITE_BED,
-                Blocks.YELLOW_BED,
-                Blocks.BAMBOO,
-                Blocks.LADDER,
-                Blocks.RESIN_CLUMP,
-                Blocks.RESIN_BRICK_SLAB,
-                Blocks.END_ROD,
-                Blocks.ACACIA_DOOR,
-                Blocks.BAMBOO_DOOR,
-                Blocks.DARK_OAK_DOOR,
-                Blocks.BIRCH_DOOR,
-                Blocks.CHERRY_DOOR,
-                Blocks.CRIMSON_DOOR,
-                Blocks.IRON_DOOR,
-                Blocks.COPPER_DOOR,
-                Blocks.EXPOSED_COPPER_DOOR,
-                Blocks.OXIDIZED_COPPER_DOOR,
-                Blocks.WEATHERED_COPPER_DOOR,
-                Blocks.WAXED_COPPER_DOOR,
-                Blocks.WAXED_EXPOSED_COPPER_DOOR,
-                Blocks.WAXED_OXIDIZED_COPPER_DOOR,
-                Blocks.WAXED_WEATHERED_COPPER_DOOR,
-                Blocks.JUNGLE_DOOR,
-                Blocks.MANGROVE_DOOR,
-                Blocks.OAK_DOOR,
-                Blocks.PALE_OAK_DOOR,
-                Blocks.SPRUCE_DOOR,
-                Blocks.WARPED_DOOR,
-                Blocks.TORCHFLOWER,
-                Blocks.TORCHFLOWER_CROP,
-                Blocks.CANDLE_CAKE,
-                Blocks.CYAN_CANDLE,
-                Blocks.BLUE_CANDLE,
-                Blocks.BLACK_CANDLE,
-                Blocks.BROWN_CANDLE,
-                Blocks.GRAY_CANDLE,
-                Blocks.GREEN_CANDLE,
-                Blocks.LIGHT_BLUE_CANDLE,
-                Blocks.LIGHT_GRAY_CANDLE,
-                Blocks.LIME_CANDLE,
-                Blocks.MAGENTA_CANDLE,
-                Blocks.ORANGE_CANDLE,
-                Blocks.BLACK_CANDLE_CAKE,
-                Blocks.BLUE_CANDLE_CAKE,
-                Blocks.CYAN_CANDLE_CAKE,
-                Blocks.LIGHT_GRAY_CANDLE_CAKE,
-                Blocks.LIME_CANDLE_CAKE,
-                Blocks.GREEN_CANDLE_CAKE,
-                Blocks.RED_CANDLE_CAKE,
-                Blocks.GRAY_CANDLE_CAKE,
-                Blocks.MAGENTA_CANDLE_CAKE,
-                Blocks.BROWN_CANDLE_CAKE,
-                Blocks.PURPLE_CANDLE_CAKE,
-                Blocks.WHITE_CANDLE_CAKE,
-                Blocks.YELLOW_CANDLE_CAKE,
-                Blocks.PURPLE_CANDLE,
-                Blocks.WHITE_CANDLE,
-                Blocks.RED_CANDLE,
-                Blocks.YELLOW_CANDLE,
-                Blocks.LIGHT_BLUE_CANDLE_CAKE,
-                Blocks.ORANGE_CANDLE_CAKE,
-                Blocks.PINK_CANDLE_CAKE,
-                Blocks.ACACIA_SHELF,
-                Blocks.BAMBOO_SHELF,
-                Blocks.SPRUCE_SHELF,
-                Blocks.BIRCH_SHELF,
-                Blocks.CHERRY_SHELF,
-                Blocks.CRIMSON_SHELF,
-                Blocks.DARK_OAK_SHELF,
-                Blocks.JUNGLE_SHELF,
-                Blocks.MANGROVE_SHELF,
-                Blocks.OAK_SHELF,
-                Blocks.PALE_OAK_SHELF,
-                Blocks.WARPED_SHELF,
-                Blocks.PALE_HANGING_MOSS,
-                // SLABS
-                Blocks.TUFF_SLAB,
-                Blocks.ACACIA_SLAB,
-                Blocks.ANDESITE_SLAB,
-                Blocks.BAMBOO_SLAB,
-                Blocks.BIRCH_SLAB,
-                Blocks.BRICK_SLAB,
-                Blocks.BAMBOO_MOSAIC_SLAB,
-                Blocks.BLACKSTONE_SLAB,
-                Blocks.CHERRY_SLAB,
-                Blocks.COBBLED_DEEPSLATE_SLAB,
-                Blocks.COBBLESTONE_SLAB,
-                Blocks.CRIMSON_SLAB,
-                Blocks.CUT_COPPER_SLAB,
-                Blocks.EXPOSED_CUT_COPPER_SLAB,
-                Blocks.OXIDIZED_CUT_COPPER_SLAB,
-                Blocks.WEATHERED_CUT_COPPER_SLAB,
-                Blocks.WAXED_CUT_COPPER_SLAB,
-                Blocks.WAXED_EXPOSED_CUT_COPPER_SLAB,
-                Blocks.WAXED_OXIDIZED_CUT_COPPER_SLAB,
-                Blocks.WAXED_WEATHERED_CUT_COPPER_SLAB,
-                Blocks.CUT_RED_SANDSTONE_SLAB,
-                Blocks.CUT_SANDSTONE_SLAB,
-                Blocks.DARK_OAK_SLAB,
-                Blocks.PALE_OAK_SLAB,
-                Blocks.DARK_PRISMARINE_SLAB,
-                Blocks.DEEPSLATE_TILE_SLAB,
-                Blocks.DIORITE_SLAB,
-                Blocks.END_STONE_BRICK_SLAB,
-                Blocks.GRANITE_SLAB,
-                Blocks.JUNGLE_SLAB,
-                Blocks.MANGROVE_SLAB,
-                Blocks.MOSSY_COBBLESTONE_SLAB,
-                Blocks.MOSSY_STONE_BRICK_SLAB,
-                Blocks.MUD_BRICK_SLAB,
-                Blocks.NETHER_BRICK_SLAB,
-                Blocks.OAK_SLAB,
-                Blocks.PETRIFIED_OAK_SLAB,
-                Blocks.POLISHED_ANDESITE_SLAB,
-                Blocks.POLISHED_BLACKSTONE_BRICK_SLAB,
-                Blocks.POLISHED_BLACKSTONE_SLAB,
-                Blocks.POLISHED_DEEPSLATE_SLAB,
-                Blocks.POLISHED_DIORITE_SLAB,
-                Blocks.POLISHED_GRANITE_SLAB,
-                Blocks.PRISMARINE_BRICK_SLAB,
-                Blocks.PRISMARINE_SLAB,
-                Blocks.PURPUR_SLAB,
-                Blocks.QUARTZ_SLAB,
-                Blocks.RED_NETHER_BRICK_SLAB,
-                Blocks.RED_SANDSTONE_SLAB,
-                Blocks.SANDSTONE_SLAB,
-                Blocks.SMOOTH_QUARTZ_SLAB,
-                Blocks.SMOOTH_RED_SANDSTONE_SLAB,
-                Blocks.SMOOTH_SANDSTONE_SLAB,
-                Blocks.SMOOTH_STONE_SLAB,
-                Blocks.SPRUCE_SLAB,
-                Blocks.STONE_BRICK_SLAB,
-                Blocks.STONE_SLAB,
-                Blocks.WARPED_SLAB,
-
-                Blocks.BLACK_BANNER,
-                Blocks.ORANGE_BANNER,
-                Blocks.YELLOW_WALL_BANNER,
-                Blocks.YELLOW_BANNER,
-                Blocks.WHITE_WALL_BANNER,
-                Blocks.WHITE_BANNER,
-                Blocks.RED_WALL_BANNER,
-                Blocks.RED_BANNER,
-                Blocks.PURPLE_WALL_BANNER,
-                Blocks.PURPLE_BANNER,
-                Blocks.PINK_WALL_BANNER,
-                Blocks.PINK_BANNER,
-                Blocks.ORANGE_WALL_BANNER,
-                Blocks.MAGENTA_BANNER,
-                Blocks.LIME_WALL_BANNER,
-                Blocks.LIME_BANNER,
-                Blocks.BLUE_BANNER,
-                Blocks.BROWN_BANNER,
-                Blocks.BLUE_WALL_BANNER,
-                Blocks.BLACK_WALL_BANNER,
-                Blocks.BROWN_WALL_BANNER,
-                Blocks.CYAN_BANNER,
-                Blocks.CYAN_WALL_BANNER,
-                Blocks.GRAY_BANNER,
-                Blocks.GRAY_WALL_BANNER,
-                Blocks.GREEN_BANNER,
-                Blocks.GREEN_WALL_BANNER,
-                Blocks.LIGHT_BLUE_BANNER,
-                Blocks.LIGHT_BLUE_WALL_BANNER,
-                Blocks.LIGHT_GRAY_BANNER,
-                Blocks.LIGHT_GRAY_WALL_BANNER,
-                Blocks.MAGENTA_WALL_BANNER,
-                Blocks.SCULK_VEIN,
-                Blocks.ANVIL,
-                Blocks.CHIPPED_ANVIL,
-                Blocks.DAMAGED_ANVIL,
-                Blocks.IRON_CHAIN,
-                Blocks.COPPER_CHAINS.unaffected(),
-                Blocks.COPPER_CHAINS.exposed(),
-                Blocks.COPPER_CHAINS.weathered(),
-                Blocks.COPPER_CHAINS.oxidized(),
-                Blocks.COPPER_CHAINS.waxed(),
-                Blocks.COPPER_CHAINS.waxedExposed(),
-                Blocks.COPPER_CHAINS.waxedOxidized(),
-                Blocks.COPPER_CHAINS.waxedWeathered(),
-                Blocks.IRON_BARS,
-                Blocks.COPPER_BARS.unaffected(),
-                Blocks.COPPER_BARS.exposed(),
-                Blocks.COPPER_BARS.weathered(),
-                Blocks.COPPER_BARS.oxidized(),
-                Blocks.COPPER_BARS.waxed(),
-                Blocks.COPPER_BARS.waxedExposed(),
-                Blocks.COPPER_BARS.waxedOxidized(),
-                Blocks.COPPER_BARS.waxedWeathered(),
-                Blocks.CHAIN_COMMAND_BLOCK,
-                Blocks.CAKE,
-                Blocks.SCAFFOLDING,
-                Blocks.NETHER_WART,
-                Blocks.ACACIA_TRAPDOOR,
-                Blocks.BAMBOO_TRAPDOOR,
-                Blocks.BIRCH_TRAPDOOR,
-                Blocks.CHERRY_TRAPDOOR,
-                Blocks.CRIMSON_TRAPDOOR,
-                Blocks.IRON_TRAPDOOR,
-                Blocks.COPPER_TRAPDOOR,
-                Blocks.EXPOSED_COPPER_TRAPDOOR,
-                Blocks.OXIDIZED_COPPER_TRAPDOOR,
-                Blocks.WEATHERED_COPPER_TRAPDOOR,
-                Blocks.WAXED_COPPER_TRAPDOOR,
-                Blocks.WAXED_EXPOSED_COPPER_TRAPDOOR,
-                Blocks.WAXED_OXIDIZED_COPPER_TRAPDOOR,
-                Blocks.WAXED_WEATHERED_COPPER_TRAPDOOR,
-                Blocks.DARK_OAK_TRAPDOOR,
-                Blocks.OAK_TRAPDOOR,
-                Blocks.PALE_OAK_TRAPDOOR,
-                Blocks.JUNGLE_TRAPDOOR,
-                Blocks.MANGROVE_TRAPDOOR,
-                Blocks.SPRUCE_TRAPDOOR,
-                Blocks.WARPED_TRAPDOOR,
-                Blocks.ACACIA_PRESSURE_PLATE,
-                Blocks.BAMBOO_PRESSURE_PLATE,
-                Blocks.BIRCH_PRESSURE_PLATE,
-                Blocks.CHERRY_PRESSURE_PLATE,
-                Blocks.CRIMSON_PRESSURE_PLATE,
-                Blocks.HEAVY_WEIGHTED_PRESSURE_PLATE,
-                Blocks.JUNGLE_PRESSURE_PLATE,
-                Blocks.LIGHT_WEIGHTED_PRESSURE_PLATE,
-                Blocks.MANGROVE_PRESSURE_PLATE,
-                Blocks.OAK_PRESSURE_PLATE,
-                Blocks.PALE_OAK_PRESSURE_PLATE,
-                Blocks.POLISHED_BLACKSTONE_PRESSURE_PLATE,
-                Blocks.SPRUCE_PRESSURE_PLATE,
-                Blocks.WARPED_PRESSURE_PLATE,
-                Blocks.STONE_PRESSURE_PLATE,
-                Blocks.DARK_OAK_PRESSURE_PLATE,
-                Blocks.POTTED_ALLIUM,
-                Blocks.POTTED_CLOSED_EYEBLOSSOM,
-                Blocks.POTTED_OPEN_EYEBLOSSOM,
-                Blocks.POTTED_BAMBOO,
-                Blocks.POTTED_CACTUS,
-                Blocks.POTTED_AZURE_BLUET,
-                Blocks.POTTED_BLUE_ORCHID,
-                Blocks.POTTED_BROWN_MUSHROOM,
-                Blocks.POTTED_CORNFLOWER,
-                Blocks.POTTED_WITHER_ROSE,
-                Blocks.POTTED_CRIMSON_FUNGUS,
-                Blocks.POTTED_DANDELION,
-                Blocks.POTTED_CRIMSON_ROOTS,
-                Blocks.POTTED_WHITE_TULIP,
-                Blocks.POTTED_WARPED_ROOTS,
-                Blocks.POTTED_WARPED_FUNGUS,
-                Blocks.POTTED_TORCHFLOWER,
-                Blocks.SPRUCE_SAPLING,
-                Blocks.ACACIA_SAPLING,
-                Blocks.BAMBOO_SAPLING,
-                Blocks.BIRCH_SAPLING,
-                Blocks.CHERRY_SAPLING,
-                Blocks.DARK_OAK_SAPLING,
-                Blocks.JUNGLE_SAPLING,
-                Blocks.OAK_SAPLING,
-                Blocks.PALE_OAK_SAPLING,
-                Blocks.POTTED_ACACIA_SAPLING,
-                Blocks.POTTED_BIRCH_SAPLING,
-                Blocks.POTTED_CHERRY_SAPLING,
-                Blocks.POTTED_DARK_OAK_SAPLING,
-                Blocks.POTTED_PALE_OAK_SAPLING,
-                Blocks.POTTED_JUNGLE_SAPLING,
-                Blocks.POTTED_SPRUCE_SAPLING,
-                Blocks.POTTED_OAK_SAPLING,
-                Blocks.POTTED_RED_TULIP,
-                Blocks.POTTED_RED_MUSHROOM,
-                Blocks.POTTED_POPPY,
-                Blocks.SPORE_BLOSSOM,
-                Blocks.POTTED_PINK_TULIP,
-                Blocks.POTTED_OXEYE_DAISY,
-                Blocks.POTTED_ORANGE_TULIP,
-                Blocks.POTTED_MANGROVE_PROPAGULE,
-                Blocks.POTTED_LILY_OF_THE_VALLEY,
-                Blocks.POTTED_FERN,
-                // SHULKER
-                Blocks.SHULKER_BOX,
-                Blocks.BLACK_SHULKER_BOX,
-                Blocks.BLUE_SHULKER_BOX,
-                Blocks.CYAN_SHULKER_BOX,
-                Blocks.BROWN_SHULKER_BOX,
-                Blocks.GRAY_SHULKER_BOX,
-                Blocks.GREEN_SHULKER_BOX,
-                Blocks.LIGHT_BLUE_SHULKER_BOX,
-                Blocks.LIGHT_GRAY_SHULKER_BOX,
-                Blocks.LIME_SHULKER_BOX,
-                Blocks.MAGENTA_SHULKER_BOX,
-                Blocks.ORANGE_SHULKER_BOX,
-                Blocks.PINK_SHULKER_BOX,
-                Blocks.PURPLE_SHULKER_BOX,
-                Blocks.RED_SHULKER_BOX,
-                Blocks.WHITE_SHULKER_BOX,
-                Blocks.YELLOW_SHULKER_BOX,
-
-                Blocks.WHEAT
-        ));
+    public ChunkReplacementManager(JavaPlugin plugin, ModState state, EffectManager effectManager, MobSpawnManager mobSpawnManager) {
+        this.state = state;
+        this.effectManager = effectManager;
+        this.mobSpawnManager = mobSpawnManager;
+        this.chunkWalkerKey = new NamespacedKey(plugin, "chunk_walker");
+        reloadBlocks();
     }
 
-    public static void reloadBlocks(ServerWorld world) {
+    public void handleChunkEntry(Player player, Chunk chunk) {
+        ItemStack boots = player.getInventory().getBoots();
+        if (hasChunkWalker(boots)) {
+            if (player.getGameMode() != GameMode.CREATIVE) {
+                damageChunkWalkerBoots(player, boots, 10);
+            }
+            if (state.getDebugLevel() > 0) {
+                player.sendMessage(Component.text("[Chunk Walker] Protection active!", NamedTextColor.AQUA));
+            }
+            return;
+        }
+
+        ChunkKey key = new ChunkKey(chunk.getWorld().getUID(), chunk.getX(), chunk.getZ());
+        if (visitedChunks.add(key) && visitedChunks.size() % state.getSpawnInterval() == 0) {
+            mobSpawnManager.triggerSurpriseSpawn(chunk.getWorld(), player, state.getMaxMobs(), state.getDebugLevel());
+        }
+
+        processChunk(chunk, player);
+    }
+
+    public void giveChunkWalkerBoots(Player player) {
+        ItemStack boots = new ItemStack(Material.DIAMOND_BOOTS);
+        ItemMeta meta = boots.getItemMeta();
+        meta.itemName(Component.text("Chunk Walker", NamedTextColor.AQUA));
+        meta.getPersistentDataContainer().set(chunkWalkerKey, PersistentDataType.BYTE, (byte) 1);
+        boots.setItemMeta(meta);
+        player.getInventory().addItem(boots);
+    }
+
+    public void removeExcessItems() {
+        for (Player player : playerWorldPlayers()) {
+            player.getWorld().getNearbyEntities(player.getLocation(), 36, player.getWorld().getMaxHeight(), 36, entity -> entity instanceof Item)
+                    .stream()
+                    .map(Item.class::cast)
+                    .filter(item -> isRemovableItem(item.getItemStack().getType()))
+                    .forEach(Item::remove);
+        }
+    }
+
+    private List<Player> playerWorldPlayers() {
+        List<Player> players = new ArrayList<>();
+        for (World world : org.bukkit.Bukkit.getWorlds()) {
+            players.addAll(world.getPlayers());
+        }
+        return players;
+    }
+
+    private void reloadBlocks() {
         validReplacementBlocks.clear();
-        for (Block block : Registries.BLOCK) {
-            if (!REPLACEMENT_BLACKLIST.contains(block)) {
-                validReplacementBlocks.add(block);
+        for (Material material : Material.values()) {
+            if (isValidReplacementBlock(material)) {
+                validReplacementBlocks.add(material);
             }
         }
     }
 
-    public static void tick(ServerWorld world) {
-        if (!ModState.isActive()) return;
-        if (validReplacementBlocks.isEmpty()) reloadBlocks(world);
+    private boolean isValidReplacementBlock(Material material) {
+        if (!material.isBlock() || EXPLICIT_REPLACEMENT_BLACKLIST.contains(material)) {
+            return false;
+        }
 
-        for (ServerPlayerEntity player : world.getPlayers()) {
-            ChunkPos currentPos = player.getChunkPos();
-            if (!currentPos.equals(lastChunkPos.get(player.getUuid()))) {
-                lastChunkPos.put(player.getUuid(), currentPos);
+        if (!material.isSolid() && !isFluidLike(material)) {
+            return false;
+        }
 
-                ItemStack boots = player.getEquippedStack(EquipmentSlot.FEET);
-                boolean hasChunkWalker = false;
+        if (material.hasGravity() && !isFluidLike(material)) {
+            return false;
+        }
 
-                if (!boots.isEmpty()) {
-                    if (boots.getName().getString().contains("Chunk Walker")) {
-                        hasChunkWalker = true;
-                    }
-                    if (!hasChunkWalker) {
-                        hasChunkWalker = EnchantmentHelper.getEnchantments(boots).getEnchantments().stream()
-                                .anyMatch(e -> e.getKey().get().getValue().toString().equals("chunkblockmod:chunk_walker"));
-                    }
-                }
-
-                if (hasChunkWalker) {
-                    if (!player.isCreative()) {
-                        boots.damage(10, world, player, item -> player.sendEquipmentBreakStatus(item, EquipmentSlot.FEET));
-                    }
-                    if (ModState.getDebugLevel() > 0) {
-                        player.sendMessage(Text.literal("§b[Chunk Walker] Protection active!").formatted(Formatting.AQUA), true);
-                    }
-                    continue;
-                }
-
-                if (!globalVisitedChunks.contains(currentPos)) {
-                    globalVisitedChunks.add(currentPos);
-                    if (globalVisitedChunks.size() % ModState.getSpawnInterval() == 0) {
-                        MobSpawnManager.triggerSurpriseSpawn(world, player);
-                    }
-                }
-                processChunk(world, currentPos, player);
+        String name = material.name();
+        for (String suffix : EXCLUDED_SUFFIXES) {
+            if (name.endsWith(suffix)) {
+                return false;
             }
         }
-        if (world.getServer().getTicks() % 100 == 0) {
-            removeExcessItems(world);
+
+        for (String token : EXCLUDED_TOKENS) {
+            if (name.contains(token)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void processChunk(Chunk chunk, Player player) {
+        if (state.areEffectsEnabled()) {
+            effectManager.applyChunkEffect(player, chunk, state.getDebugLevel());
+        }
+
+        Material targetBlock = pickReplacementBlock(chunk);
+        if (targetBlock == null) {
+            return;
+        }
+
+        if (state.getDebugLevel() == 2) {
+            player.sendMessage(Component.text("[LOG] Chunk Block: " + prettify(targetBlock), NamedTextColor.GRAY));
+        }
+
+        World world = chunk.getWorld();
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                for (int y = world.getMinHeight(); y < world.getMaxHeight(); y++) {
+                    org.bukkit.block.Block block = chunk.getBlock(localX, y, localZ);
+                    Material current = block.getType();
+                    if (current.isAir()) {
+                        continue;
+                    }
+
+                    boolean isFluid = isFluidLike(current);
+                    if (isProtectedBlock(current) && !(isFluid && state.shouldReplaceFluids())) {
+                        continue;
+                    }
+
+                    if (current == targetBlock) {
+                        continue;
+                    }
+
+                    block.setType(targetBlock, false);
+                }
+            }
         }
     }
 
-    private static void processChunk(ServerWorld world, ChunkPos chunkPos, ServerPlayerEntity player) {
-        if (ModState.areEffectsEnabled()) {
-            EffectManager.applyChunkEffect(player, chunkPos);
+    private Material pickReplacementBlock(Chunk chunk) {
+        List<Material> allowedBlocks = validReplacementBlocks.stream()
+                .filter(material -> !state.getCustomBlacklist().contains(material))
+                .toList();
+
+        if (allowedBlocks.isEmpty()) {
+            return null;
         }
-        if (validReplacementBlocks.isEmpty()) return;
-        long seed = (long) chunkPos.x * 3121L + (long) chunkPos.z * 13289L;
+
+        long seed = chunk.getWorld().getSeed()
+                ^ ((long) chunk.getX() * 3_121L)
+                ^ ((long) chunk.getZ() * 13_289L);
         Random random = new Random(seed);
-        Block targetBlock = validReplacementBlocks.get(random.nextInt(validReplacementBlocks.size()));
-        int attempts = 0;
-        while (ModState.getCustomBlacklist().contains(targetBlock) && attempts < 100) {
-            random = new Random(seed + (++attempts));
-            targetBlock = validReplacementBlocks.get(random.nextInt(validReplacementBlocks.size()));
-        }
-        if (ModState.getDebugLevel() == 2) {
-            player.sendMessage(Text.literal("§7[LOG] Chunk Block: " + targetBlock.getName().getString()).formatted(Formatting.GRAY), false);
-        }
-
-        BlockPos.Mutable mutablePos = new BlockPos.Mutable();
-        for (int x = chunkPos.getStartX(); x <= chunkPos.getEndX(); x++) {
-            for (int z = chunkPos.getStartZ(); z <= chunkPos.getEndZ(); z++) {
-                for (int y = world.getBottomY(); y < world.getBottomY() + world.getHeight(); y++) {
-                    mutablePos.set(x, y, z);
-                    BlockState currentState = world.getBlockState(mutablePos);
-                    Block block = currentState.getBlock();
-
-                    if (currentState.isAir()) continue;
-
-                    boolean isFluid = (block == net.minecraft.block.Blocks.WATER ||
-                            block == net.minecraft.block.Blocks.LAVA ||
-                            block == net.minecraft.block.Blocks.FIRE);
-
-                    if (PROTECTED_BLOCKS.contains(block)) {
-                        if (!(isFluid && ModState.shouldReplaceFluids())) {
-                            continue;
-                        }
-                    }
-
-                    if (currentState.isOf(targetBlock)) continue;
-
-                    world.setBlockState(mutablePos, targetBlock.getDefaultState(), Block.NOTIFY_LISTENERS);
-                }
-            }
-        }
+        return allowedBlocks.get(random.nextInt(allowedBlocks.size()));
     }
 
-    private static void removeExcessItems(ServerWorld world) {
-        for (ServerPlayerEntity player : world.getPlayers()) {
-            ChunkPos pos = player.getChunkPos();
-            Box box = new Box(pos.getStartX(), world.getBottomY(), pos.getStartZ(), pos.getEndX(), world.getBottomY() + world.getHeight(), pos.getEndZ()).expand(20);
-            world.getEntitiesByClass(ItemEntity.class, box, itemEntity -> REMOVABLE_ITEMS.contains(itemEntity.getStack().getItem())).forEach(ItemEntity::discard);
+    private boolean hasChunkWalker(ItemStack boots) {
+        if (boots == null || boots.getType() == Material.AIR || !boots.hasItemMeta()) {
+            return false;
         }
+
+        ItemMeta meta = boots.getItemMeta();
+        PersistentDataContainer data = meta.getPersistentDataContainer();
+        if (data.has(chunkWalkerKey, PersistentDataType.BYTE)) {
+            return true;
+        }
+
+        return meta.hasItemName()
+                && PlainTextComponentSerializer.plainText().serialize(meta.itemName()).toLowerCase(Locale.ROOT).contains("chunk walker");
+    }
+
+    private void damageChunkWalkerBoots(Player player, ItemStack boots, int amount) {
+        if (!(boots.getItemMeta() instanceof Damageable damageable)) {
+            return;
+        }
+
+        int newDamage = damageable.getDamage() + amount;
+        if (newDamage >= boots.getType().getMaxDurability()) {
+            player.getInventory().setBoots(null);
+            player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
+            return;
+        }
+
+        damageable.setDamage(newDamage);
+        boots.setItemMeta((ItemMeta) damageable);
+    }
+
+    private boolean isProtectedBlock(Material material) {
+        if (PROTECTED_BLOCKS.contains(material)) {
+            return true;
+        }
+
+        String name = material.name();
+        return name.contains("CHEST") || name.endsWith("_BED");
+    }
+
+    private boolean isFluidLike(Material material) {
+        return material == Material.WATER || material == Material.LAVA || material == Material.FIRE;
+    }
+
+    private boolean isRemovableItem(Material material) {
+        String name = material.name();
+        return REMOVABLE_ITEM_NAMES.contains(name) || name.endsWith("_SAPLING") || name.endsWith("_SEEDS");
+    }
+
+    private String prettify(Material material) {
+        return material.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+    }
+
+    private record ChunkKey(UUID worldId, int x, int z) {
     }
 }
