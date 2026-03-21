@@ -290,7 +290,7 @@ public final class ChunkReplacementManager {
     }
 
     private boolean shouldClearDecorativeFoliage(Material material) {
-        if (Tag.LEAVES.isTagged(material) || Tag.FLOWERS.isTagged(material) || Tag.SAPLINGS.isTagged(material)) {
+        if (Tag.FLOWERS.isTagged(material) || Tag.SAPLINGS.isTagged(material)) {
             return true;
         }
 
