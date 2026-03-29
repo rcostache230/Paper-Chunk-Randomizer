@@ -38,7 +38,7 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
 
         this.state = new ModState(this);
         EffectManager effectManager = new EffectManager();
-        MobSpawnManager mobSpawnManager = new MobSpawnManager();
+        MobSpawnManager mobSpawnManager = new MobSpawnManager(this);
         this.chunkReplacementManager = new ChunkReplacementManager(this, state, effectManager, mobSpawnManager);
 
         PluginCommand command = getCommand("rc");

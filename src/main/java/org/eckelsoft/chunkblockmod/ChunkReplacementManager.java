@@ -30,7 +30,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class ChunkReplacementManager {
-    private static final int BLOCK_VISITS_PER_TICK = 8_192;
+    private static final int BLOCK_VISITS_PER_TICK = 2_048;
     private static final Set<String> EXCLUDED_SUFFIXES = Set.of(
             "_STAIRS", "_SLAB", "_WALL", "_FENCE", "_FENCE_GATE", "_DOOR", "_TRAPDOOR",
             "_BED", "_BUTTON", "_PRESSURE_PLATE", "_BANNER", "_SIGN", "_HANGING_SIGN",
