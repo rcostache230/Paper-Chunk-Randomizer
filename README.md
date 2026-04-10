@@ -8,8 +8,8 @@ Every new chunk a player enters is transformed into one deterministic replacemen
 
 ## Status
 
-- Current release line: `beta`
-- Target platform: Paper `1.21.x`
+- Current release line: `0.2.0`
+- Target platform: Paper `1.21.11`
 - Required Java version: `21`
 
 ## Credits
@@ -31,14 +31,14 @@ Every new chunk a player enters is transformed into one deterministic replacemen
 
 The compiled beta plugin jar is written with a unique build suffix each time you build, for example:
 
-`build/libs/Paper-Chunk-Randomizer-0.1.0-beta.1-build.20260321124500.jar`
+`build/libs/Paper-Chunk-Randomizer-0.2.0-build.20260410000000.jar`
 
 Drop that jar into your server's `plugins/` folder and restart the server.
 
 ## Installation
 
 1. Stop your Paper server.
-2. Copy the newest `Paper-Chunk-Randomizer-0.1.0-beta.1-build.<timestamp>.jar` into `plugins/`.
+2. Copy the newest `Paper-Chunk-Randomizer-0.2.0-build.<timestamp>.jar` into `plugins/`.
 3. Start the server.
 4. Configure the plugin in `plugins/Paper-Chunk-Randomizer/config.yml` if needed.
 5. Use `/rc start` in-game to begin the challenge.

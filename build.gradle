@@ -5,7 +5,7 @@ plugins {
     id 'java'
 }
 
-def basePluginVersion = (findProperty('plugin_version') ?: '0.1.0-beta.1').toString()
+def basePluginVersion = (findProperty('plugin_version') ?: '0.2.0').toString()
 def buildTimestampFormat = new SimpleDateFormat("yyyyMMddHHmmss")
 buildTimestampFormat.setTimeZone(TimeZone.getTimeZone("UTC"))
 def buildTimestamp = buildTimestampFormat.format(new Date())
@@ -40,7 +40,7 @@ processResources {
     filesMatching('plugin.yml') {
         expand(
                 version: project.version,
-                apiVersion: findProperty('paper_api_compat_version') ?: '1.21.10'
+                apiVersion: findProperty('paper_api_compat_version') ?: '1.21.11'
         )
     }
 }
