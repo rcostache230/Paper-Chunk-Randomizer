@@ -69,7 +69,7 @@ The plugin trades conversion speed for server responsiveness. Backoff and queue 
 
 Use a **fresh dedicated challenge world**. Version 0.2.0 did not persist its visited set, so existing transformed chunks cannot be identified retroactively. Each desired dimension/world must be explicitly enabled. `/rc reset` resets the timer only; it does not restore terrain or clear chunk completion markers. Keep a full backup before testing on existing worlds.
 
-This code has not been installed or activated on the production server. Before rollout, test movement/teleportation with real players, Chunk Walker boots, effects, surprise mobs, and any region-protection/claim plugins in staging. The randomizer does not implement third-party claim checks, and terrain replacement is permanent.
+The automated verification uses an isolated server. Before deployment to another server, test movement/teleportation with real players, Chunk Walker boots, effects, surprise mobs, and any region-protection/claim plugins in staging. The randomizer does not implement third-party claim checks, and terrain replacement is permanent.
 
 ## API references
 
