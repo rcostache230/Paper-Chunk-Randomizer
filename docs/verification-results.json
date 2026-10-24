@@ -1,0 +1,66 @@
+{
+  "baseline_revision": "5a0035f",
+  "branch": "fix/bounded-chunk-processing",
+  "artifact": "build/libs/Paper-Chunk-Randomizer-0.3.0-build.20261024075103.jar",
+  "artifact_sha256": "f227ca3357f12e3472e1acb51c617fbee18b94763e5ed10efb3a146d3eb5fe97",
+  "api_compile_target": "Paper 1.21.11",
+  "bytecode_java": 21,
+  "runtime": "Paper 26.3 build 178 / Java 25.0.4.1",
+  "unit_tests": [
+    {
+      "name": "org.eckelsoft.chunkblockmod.ModStateTest",
+      "tests": "4",
+      "failures": "0",
+      "errors": "0"
+    },
+    {
+      "name": "org.eckelsoft.chunkblockmod.TickWorkQueueTest",
+      "tests": "9",
+      "failures": "0",
+      "errors": "0"
+    }
+  ],
+  "integration_phases": [
+    {
+      "passed": true,
+      "phase": 1,
+      "paper": "26.3",
+      "ticks": 221,
+      "elapsed_seconds": 11.007,
+      "processing_mean_ms": 1.618,
+      "processing_p95_ms": 2.683,
+      "processing_max_ms": 8.753,
+      "status": "Queue: 1/4, completed: 5, changed blocks: 129004, deferred entries: 1, last tick: 1024 visits / 0.598 ms (limit 2.00 ms)"
+    },
+    {
+      "passed": true,
+      "phase": 2,
+      "paper": "26.3",
+      "ticks": 71,
+      "elapsed_seconds": 3.306,
+      "processing_mean_ms": 2.076,
+      "processing_p95_ms": 2.263,
+      "processing_max_ms": 12.598,
+      "status": "Queue: 0/4, completed: 1, changed blocks: 24597, deferred entries: 0, last tick: 155 visits / 0.617 ms (limit 2.00 ms)"
+    }
+  ],
+  "test_conditions": {
+    "world": "new disposable flat world",
+    "seed": 230,
+    "solid_layers": 101,
+    "connected_players": 0,
+    "effects": false,
+    "surprise_mobs": 0,
+    "queue_capacity": 4,
+    "max_visits": 1024,
+    "soft_budget_ms": 2.0,
+    "backoff_enabled": false
+  },
+  "notes": [
+    "Phase 1 intentionally leaves one partially processed chunk for the restart test. Phase 2 resumes and completes it.",
+    "Worker-call timings only; no original-version benchmark and no multiplayer/server-wide TPS comparison.",
+    "Default production backoff is enabled at 40 ms average server tick time; it was disabled only in the benchmark.",
+    "Soft time limits can be exceeded by single writes, JVM pauses, checkpoint work, or OS scheduling.",
+    "Production plugin/worlds/configuration were not changed."
+  ]
+}

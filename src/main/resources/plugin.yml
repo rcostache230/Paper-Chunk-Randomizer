@@ -1,15 +1,15 @@
 name: Paper-Chunk-Randomizer
 version: ${version}
 main: org.eckelsoft.chunkblockmod.Chunkblockmod
-description: Beta Paper port of Eckelsoft's Chunk Randomizer challenge.
+description: Time-budgeted Paper adaptation of Eckelsoft's Chunk Randomizer challenge.
 author: Eckelsoft
-website: https://github.com/eckelsoft/Chunk-Randomizer
+website: https://github.com/rcostache230/Paper-Chunk-Randomizer
 api-version: '${apiVersion}'
 commands:
   rc:
     description: Controls the chunk randomizer challenge.
-    usage: /rc <start|stop|reset|timer|effects|fluids|exclude|spawnmonster|debug>
+    usage: /rc <start|stop|reset|status|world|timer|effects|fluids|exclude|spawnmonster|debug>
 permissions:
   paperchunkrandomizer.admin:
-    description: Allows managing the custom replacement blacklist.
+    description: Allows controlling the challenge and its worlds/settings.
     default: op

@@ -1,4 +1,12 @@
 debug-level: 1
+# Explicit opt-in: never randomize existing survival/lobby worlds by default.
+enabled-worlds: []
+performance:
+  max-block-visits-per-tick: 1024
+  max-millis-per-tick: 2.0
+  max-queued-chunks: 64
+  # Pause edits while Paper's average tick time is >= 40 ms (0 disables backoff).
+  pause-above-mspt: 40.0
 timer-visible: true
 effects-enabled: true
 spawn-interval: 16

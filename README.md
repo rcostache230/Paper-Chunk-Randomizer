@@ -8,9 +8,9 @@ Every new chunk a player enters is transformed into one deterministic replacemen
 
 ## Status
 
-- Current release line: `0.2.0`
-- Target platform: Paper `1.21.11`
-- Required Java version: `21`
+- Current release line: `0.3.0`
+- Compile API: Paper `1.21.11`; runtime verification: Paper `26.3`
+- Java `21` bytecode; use the Java runtime required by your Paper version (`25` for the tested Paper `26.3`)
 
 ## Credits
 
@@ -31,22 +31,22 @@ Every new chunk a player enters is transformed into one deterministic replacemen
 
 The compiled beta plugin jar is written with a unique build suffix each time you build, for example:
 
-`build/libs/Paper-Chunk-Randomizer-0.2.0-build.20260410000000.jar`
+`build/libs/Paper-Chunk-Randomizer-0.3.0-build.20260410000000.jar`
 
 Drop that jar into your server's `plugins/` folder and restart the server.
 
 ## Installation
 
 1. Stop your Paper server.
-2. Copy the newest `Paper-Chunk-Randomizer-0.2.0-build.<timestamp>.jar` into `plugins/`.
+2. Copy the newest `Paper-Chunk-Randomizer-0.3.0-build.<timestamp>.jar` into `plugins/`.
 3. Start the server.
-4. Configure the plugin in `plugins/Paper-Chunk-Randomizer/config.yml` if needed.
-5. Use `/rc start` in-game to begin the challenge.
+4. Create a **new, disposable challenge world**, then enable it with `/rc world add <world>`. No worlds are enabled by default, including when upgrading an old configuration.
+5. Review `plugins/Paper-Chunk-Randomizer/config.yml`; use `/rc start` to begin and `/rc status` to inspect the queue. Terrain replacement is permanent; keep backups.
 
 ## Build From Source
 
 ```bash
-gradle build
+./gradlew build
 ```
 
 The build output is written to `build/libs/`.
@@ -61,7 +61,11 @@ If you are targeting a different Paper `1.21.x` version, update these values in 
 | Command | Description |
 |:--|:--|
 | `/rc start` | Starts the challenge and timer |
-| `/rc stop` | Pauses the challenge and timer |
+| `/rc stop` | Pauses new entries, queued block edits, and the timer |
+| `/rc status` | Reports queue, edits, backoff, and processing time |
+| `/rc world list` | Lists enabled challenge worlds |
+| `/rc world add <world>` | Enables a loaded challenge world |
+| `/rc world remove <world>` | Stops work in that world |
 | `/rc reset` | Resets the timer to `00:00:00` |
 | `/rc timer` | Toggles the action-bar timer |
 | `/rc timer prefix <text>` | Sets text before the timer |
@@ -80,12 +84,18 @@ Detailed command documentation lives in [docs/COMMANDS-WIKI.md](/Users/razvancos
 
 | Permission | Description | Default |
 |:--|:--|:--|
-| `paperchunkrandomizer.admin` | Allows `/rc exclude add` and `/rc exclude clear` | `op` |
+| `paperchunkrandomizer.admin` | Allows every control/configuration command; `/rc status` is public | `op` |
 
 ## Default Config
 
 ```yaml
 debug-level: 1
+enabled-worlds: []
+performance:
+  max-block-visits-per-tick: 1024
+  max-millis-per-tick: 2.0
+  max-queued-chunks: 64
+  pause-above-mspt: 40.0
 timer-visible: true
 effects-enabled: true
 spawn-interval: 16
@@ -105,14 +115,19 @@ custom-blacklist: []
 | `effects-enabled` | Whether chunk potion effects are active |
 | `spawn-interval` | Unique chunk visits required to trigger surprise spawns |
 | `max-mobs` | Maximum amount of surprise mobs spawned at once, with `0` disabling surprise mobs |
-| `replace-fluids` | Whether protected fluids and fire may be replaced |
+| `replace-fluids` | Whether source fluids and fire may be replaced; liquids are never replacement targets |
+| `enabled-worlds` | Explicit world-name allowlist; empty means no terrain edits |
+| `performance.max-block-visits-per-tick` | Global visit cap for all queued chunks per tick |
+| `performance.max-millis-per-tick` | Soft processing time budget, default 2 ms |
+| `performance.max-queued-chunks` | Bounded backlog, default 64; overflow requires re-entry after space is available |
+| `performance.pause-above-mspt` | Pause edits at this average server tick time; 0 disables backoff |
 | `timer-prefix` | Text shown before the timer |
 | `timer-suffix` | Text shown after the timer |
 | `custom-blacklist` | Materials excluded from becoming chunk replacements |
 
 ## How The Paper Beta Works
 
-- Chunk replacement is deterministic per world and chunk, so revisiting the same chunk gives the same result.
+- Chunk replacement is deterministic per world seed and chunk. Progress, the chosen material, and completion markers are saved in chunk persistent data, so revisits and clean restarts resume or skip existing work.
 - The plugin uses Paper `Material`, `PotionEffectType`, and `EntityType` pools instead of Fabric registries.
 - Replacement candidates are filtered to avoid fragile or problematic block types such as portals, stairs, rails, banners, beds, signs, and similar special blocks.
 - This is a beta Paper adaptation, so behavior is intentionally close to the original but not a byte-for-byte Fabric clone.
@@ -124,6 +139,14 @@ custom-blacklist: []
 - Chunk Walker boots lose `10` durability per protected chunk entry.
 - Use `/rc exclude add minecraft:...` to avoid especially laggy or annoying replacement blocks.
 - Use `/rc spawnmonster chunks 99999` if you want to effectively disable surprise mob spawns.
+
+## Performance and migration
+
+Block edits stay on the server thread and share a time budget. Empty sky above each column is skipped, unloaded jobs are released without force-loading chunks, and `/rc stop` pauses pending edits. There is no global dropped-item cleanup. Containers, their inventories, portal blocks, and bedrock are protected.
+
+Completion markers only exist for chunks processed by 0.3.0+. The older plugin did not save its visited set, so use a fresh challenge world when upgrading; old transformed chunks cannot be recognized automatically. `/rc reset` resets only the timer and does not restore terrain or clear completion markers.
+
+See [performance design and verification](docs/PERFORMANCE.md) for test results, tradeoffs, and the repeatable isolated-server checks.
 
 ## Included Docs
 

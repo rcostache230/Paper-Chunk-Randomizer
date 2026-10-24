@@ -17,22 +17,21 @@ If used without arguments, the plugin shows a short usage summary.
 
 ## Permissions
 
-Most commands are available to any player with access to the plugin command.
-
-Admin-only commands:
-
-- `/rc exclude add <block>`
-- `/rc exclude clear`
-
-Required permission:
-
-- `paperchunkrandomizer.admin`
+All control/configuration commands require `paperchunkrandomizer.admin` (default: operators). `/rc status` is available to everyone.
 
 ## Command List
 
+### `/rc status`
+
+Shows the current queue size, per-session completion/edit/defer counters, last processing time, and server-load backoff state. A deferred entry can be retried by entering that chunk again once the queue has room.
+
+### `/rc world <list|add <world>|remove <world>>`
+
+Explicitly enables or disables worlds for the challenge. `add` accepts a loaded world name. The list starts empty, including after upgrade from 0.2.0. Use a new challenge world because terrain replacement cannot be undone with `/rc reset`. Removing a world stops its queued edits; saved progress remains in its chunks.
+
 ### `/rc start`
 
-Starts the challenge.
+Starts the challenge after at least one world has been enabled with `/rc world add <world>`. Already-online players in enabled worlds have their current chunk considered immediately.
 
 What it does:
 
@@ -52,7 +51,7 @@ Pauses the challenge.
 
 What it does:
 
-- Stops active chunk randomization from processing new entries
+- Stops new entries **and pauses all queued block edits**
 - Pauses the timer at its current value
 
 Example:
@@ -63,7 +62,7 @@ Example:
 
 ### `/rc reset`
 
-Resets the timer to zero.
+Resets the timer to zero. It does not restore terrain or clear per-chunk completion/progress markers.
 
 Example:
 
@@ -133,7 +132,7 @@ Example:
 
 ### `/rc fluids <true|false>`
 
-Controls whether water, lava, and fire are allowed to be replaced.
+Controls whether source water, lava, and fire are allowed to be replaced. It never enables liquids as replacement targets.
 
 Values:
 
@@ -245,7 +244,10 @@ Examples:
 
 ### Standard Challenge
 
+First create a new dedicated world, then enable it:
+
 ```text
+/rc world add challenge
 /rc reset
 /rc spawnmonster chunks 16
 /rc spawnmonster max 8
@@ -286,11 +288,12 @@ Examples:
 - Blacklist changes are saved to the plugin config.
 - The timer prefix and suffix are saved to the plugin config.
 - Effect toggles, timer visibility, spawn settings, debug level, and fluid replacement settings are saved to the plugin config.
-- The plugin is designed for Paper `1.21.x` and Java `21`.
+- The plugin compiles against Paper `1.21.11` with Java `21` bytecode; runtime verification uses Paper `26.3` on Java `25`.
+- Performance budgets are configured in `config.yml` and require a full plugin/server restart to change. See [PERFORMANCE.md](PERFORMANCE.md).
 - The beta plugin data folder is `plugins/Paper-Chunk-Randomizer/`.
 
 ## Related Files
 
-- [README.md](/Users/razvancostache/Documents/chuckys/README.md)
-- [src/main/resources/config.yml](/Users/razvancostache/Documents/chuckys/src/main/resources/config.yml)
-- [src/main/resources/plugin.yml](/Users/razvancostache/Documents/chuckys/src/main/resources/plugin.yml)
+- [README.md](../README.md)
+- [src/main/resources/config.yml](../src/main/resources/config.yml)
+- [src/main/resources/plugin.yml](../src/main/resources/plugin.yml)
