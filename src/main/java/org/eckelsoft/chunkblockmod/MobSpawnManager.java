@@ -95,6 +95,8 @@ public final class MobSpawnManager {
     private void markTracked(LivingEntity entity) {
         entity.getPersistentDataContainer().set(surpriseMobKey, PersistentDataType.BYTE, (byte) 1);
         entity.setRemoveWhenFarAway(true);
+        // Temporary challenge mobs must not outlive cancelled expiry tasks after a restart.
+        entity.setPersistent(false);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (entity.isValid() && !entity.isDead()) {
                 entity.remove();

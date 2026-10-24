@@ -23,6 +23,15 @@ repositories {
 
 dependencies {
     compileOnly "io.papermc.paper:paper-api:${findProperty('paper_api_version')}"
+    testImplementation "io.papermc.paper:paper-api:${findProperty('paper_api_version')}"
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.mockito:mockito-core:5.16.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+    jvmArgs '-XX:+EnableDynamicAgentLoading'
 }
 
 java {
@@ -47,4 +56,18 @@ processResources {
 
 tasks.jar {
     archiveBaseName = findProperty('archive_name') ?: 'Paper-Chunk-Randomizer'
+}
+
+// A separate, disposable-server verification plugin. Never included in the release jar.
+sourceSets {
+    probe {
+        compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+    }
+}
+
+tasks.register('probeJar', Jar) {
+    dependsOn tasks.named('probeClasses')
+    archiveBaseName = 'RandomizerVerification'
+    archiveVersion = ''
+    from sourceSets.probe.output
 }

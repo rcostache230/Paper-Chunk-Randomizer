@@ -19,6 +19,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.StringUtil;
 
@@ -52,7 +55,14 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
         getServer().getPluginManager().registerEvents(this, this);
         startTimerTask();
         startChunkProcessingTask();
-        startCleanupTask();
+        if (state.getEnabledWorlds().isEmpty()) getLogger().info("No challenge worlds enabled. Use /rc world add <world> before /rc start.");
+    }
+
+    @Override
+    public void onDisable() {
+        if (state != null) state.setActive(false);
+        if (chunkReplacementManager != null) chunkReplacementManager.close();
+        clearActionBarIfNeeded();
     }
 
     private void startTimerTask() {
@@ -77,7 +87,7 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
             }
 
             for (Player player : Bukkit.getOnlinePlayers()) {
-                player.sendActionBar(message);
+                if (state.isWorldEnabled(player.getWorld().getName())) player.sendActionBar(message);
             }
             actionBarVisible = true;
         }, 1L, 10L);
@@ -98,10 +108,6 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
         getServer().getScheduler().runTaskTimer(this, chunkReplacementManager::processQueuedChunks, 1L, 1L);
     }
 
-    private void startCleanupTask() {
-        getServer().getScheduler().runTaskTimer(this, chunkReplacementManager::removeExcessItems, 100L, 100L);
-    }
-
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         if (!state.isActive() || event.getTo() == null) {
@@ -114,7 +120,39 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
             return;
         }
 
-        chunkReplacementManager.handleChunkEntry(event.getPlayer(), event.getTo().getChunk());
+        handleCurrentChunk(event.getPlayer(), event.getTo());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerTeleport(PlayerTeleportEvent event) {
+        if (!state.isActive() || event.getTo() == null) return;
+        if (event.getFrom().getWorld() == event.getTo().getWorld()
+                && (event.getFrom().getBlockX() >> 4) == (event.getTo().getBlockX() >> 4)
+                && (event.getFrom().getBlockZ() >> 4) == (event.getTo().getBlockZ() >> 4)) return;
+        // Teleport events can precede destination loading. Recheck the actual position next tick
+        // instead of synchronously generating the destination from an event listener.
+        getServer().getScheduler().runTask(this, () -> {
+            Player player = event.getPlayer();
+            if (player.isOnline()) handleCurrentChunk(player, player.getLocation());
+        });
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        getServer().getScheduler().runTask(this, () -> {
+            Player player = event.getPlayer();
+            if (player.isOnline()) handleCurrentChunk(player, player.getLocation());
+        });
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onChunkUnload(ChunkUnloadEvent event) { chunkReplacementManager.onChunkUnload(event.getChunk()); }
+
+    private void handleCurrentChunk(Player player, org.bukkit.Location location) {
+        org.bukkit.World world = location.getWorld();
+        if (!state.isActive() || world == null || !state.isWorldEnabled(world.getName())) return;
+        int x = location.getBlockX() >> 4, z = location.getBlockZ() >> 4;
+        if (world.isChunkLoaded(x, z)) chunkReplacementManager.handleChunkEntry(player, world.getChunkAt(x, z));
     }
 
     @Override
@@ -128,14 +166,42 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
             return true;
         }
 
+        if (!"status".equalsIgnoreCase(args[0]) && !sender.hasPermission("paperchunkrandomizer.admin")) {
+            sender.sendMessage(Component.text("You do not have permission to control the challenge.", NamedTextColor.RED));
+            return true;
+        }
+
         String subcommand = args[0].toLowerCase(Locale.ROOT);
         switch (subcommand) {
+            case "status" -> {
+                sender.sendMessage(Component.text((state.isActive() ? "Running. " : "Paused. ") + chunkReplacementManager.status(), NamedTextColor.AQUA));
+                return true;
+            }
+            case "world" -> {
+                if (args.length == 1 || "list".equalsIgnoreCase(args[1])) {
+                    sender.sendMessage(Component.text("Challenge worlds: " + String.join(", ", state.getEnabledWorlds()), NamedTextColor.AQUA));
+                } else if (args.length == 3 && "add".equalsIgnoreCase(args[1]) && Bukkit.getWorld(args[2]) != null) {
+                    state.addWorld(args[2]);
+                    sender.sendMessage(Component.text("Challenge world enabled: " + args[2], NamedTextColor.YELLOW));
+                } else if (args.length == 3 && "remove".equalsIgnoreCase(args[1])) {
+                    state.removeWorld(args[2]);
+                    sender.sendMessage(Component.text("Challenge world disabled: " + args[2], NamedTextColor.YELLOW));
+                } else {
+                    sender.sendMessage(Component.text("Usage: /rc world <list|add <loaded-world>|remove <world>>", NamedTextColor.RED));
+                }
+                return true;
+            }
             case "start" -> {
-                boolean shouldGiveBoots = state.getElapsedTimeMillis() == 0;
+                if (state.getEnabledWorlds().isEmpty()) {
+                    sender.sendMessage(Component.text("First enable a disposable challenge world with /rc world add <world>. Terrain changes are permanent.", NamedTextColor.RED));
+                    return true;
+                }
+                boolean shouldGiveBoots = !state.isActive() && state.getElapsedTimeMillis() == 0;
                 state.setActive(true);
                 if (shouldGiveBoots) {
-                    Bukkit.getOnlinePlayers().forEach(chunkReplacementManager::giveChunkWalkerBoots);
+                    Bukkit.getOnlinePlayers().stream().filter(p -> state.isWorldEnabled(p.getWorld().getName())).forEach(chunkReplacementManager::giveChunkWalkerBoots);
                 }
+                Bukkit.getOnlinePlayers().forEach(p -> handleCurrentChunk(p, p.getLocation()));
                 sender.sendMessage(Component.text("Chunk randomizer started.", NamedTextColor.GREEN));
                 return true;
             }
@@ -318,13 +384,16 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
             return List.of();
         }
 
+        if (!sender.hasPermission("paperchunkrandomizer.admin")) return args.length == 1 ? copyMatches(args[0], List.of("status")) : List.of();
+
         if (args.length == 1) {
-            return copyMatches(args[0], List.of("start", "stop", "reset", "timer", "effects", "fluids", "exclude", "spawnmonster", "debug"));
+            return copyMatches(args[0], List.of("start", "stop", "reset", "status", "world", "timer", "effects", "fluids", "exclude", "spawnmonster", "debug"));
         }
 
         String subcommand = args[0].toLowerCase(Locale.ROOT);
         if (args.length == 2) {
             return switch (subcommand) {
+                case "world" -> copyMatches(args[1], List.of("list", "add", "remove"));
                 case "fluids" -> copyMatches(args[1], List.of("true", "false"));
                 case "exclude" -> copyMatches(args[1], List.of("add", "clear"));
                 case "spawnmonster" -> copyMatches(args[1], List.of("chunk", "chunks", "max"));
@@ -332,6 +401,10 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
                 case "debug" -> copyMatches(args[1], List.of("0", "1", "2", "3"));
                 default -> List.of();
             };
+        }
+
+        if (args.length == 3 && "world".equals(subcommand)) {
+            return copyMatches(args[2], "remove".equalsIgnoreCase(args[1]) ? new ArrayList<>(state.getEnabledWorlds()) : Bukkit.getWorlds().stream().map(org.bukkit.World::getName).toList());
         }
 
         if (args.length == 3 && "exclude".equals(subcommand) && "add".equalsIgnoreCase(args[1])) {
@@ -342,6 +415,7 @@ public final class Chunkblockmod extends JavaPlugin implements Listener, Command
     }
 
     private void sendUsage(CommandSender sender) {
+        sender.sendMessage(Component.text("/rc status | world <list|add <world>|remove <world>>", NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("/rc start | stop | reset | effects", NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("/rc fluids <true|false>", NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("/rc timer [prefix|suffix <text>]", NamedTextColor.YELLOW));

@@ -1,0 +1,5 @@
+name: RandomizerVerification
+version: 1.0
+main: org.eckelsoft.verification.RandomizerVerification
+api-version: '1.21.11'
+depend: [Paper-Chunk-Randomizer]
